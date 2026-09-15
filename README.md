@@ -305,12 +305,56 @@ This project will apply:
 
 ---
 
-## Current Status
+## Project Progress
 
-**Stage 1 — Planning complete**
+### Phase 1 - Project Setup
+- Created the `AirlineRouteAnalysis` SQL Server database.
+- Created Bronze, Silver and Gold schemas following a Medallion architecture.
+- Structured the repository so SQL scripts are separated by warehouse layer.
 
-The business question, scope, main metrics and dashboard structure have been defined.
+### Phase 2 - Bronze Layer
+The Bronze layer has been created to preserve source data as close to its original form as possible.
 
-### Next Step
+Five raw source tables have been created:
 
-Collect and profile the required public datasets before designing the SQL staging tables and dimensional model.
+- `bronze.t100_segment_raw`
+- `bronze.aircraft_types_raw`
+- `bronze.united_fleet_raw`
+- `bronze.airports_raw`
+- `bronze.aircraft_range_raw`
+
+The Bronze ingestion process uses SQL Server `BULK INSERT` to load the CSV source files.
+
+The load process includes:
+
+- `TRUNCATE TABLE` before each reload
+- CSV parsing
+- Header-row handling
+- UTF-8 character encoding
+- Table-level locking during bulk loads
+- Specific LF row-terminator handling for the airport dataset
+- Stored procedure error handling using `TRY...CATCH`
+- Load-duration tracking
+
+Initial validation checks confirm that data has loaded into each Bronze table before transformation begins.
+
+### Current Status
+
+```text
+Source CSV Files
+        │
+        ▼
+   Bronze Layer        ✅ Complete
+        │
+        ▼
+   Silver Layer        ⏳ Next
+        │
+        ▼
+    Gold Layer
+        │
+        ▼
+     Power BI
+
+
+
+
