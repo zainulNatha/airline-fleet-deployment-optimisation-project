@@ -2,39 +2,154 @@
 
 ## Overview
 
-After loading the raw source datasets into the Bronze layer, I carried out a series of data profiling and quality checks before beginning any cleaning or transformation.
+The Bronze layer is the raw-data foundation of the Aircraft Route Suitability Analysis project.
 
-The purpose of this stage was to understand the data before making decisions about how the Silver layer should be designed.
+Its purpose is to ingest and preserve the source datasets before cleaning, standardisation, aggregation or business logic is applied.
 
-The Bronze layer is intended to preserve the source data as close to its original form as possible.
+The project currently uses six source datasets:
 
-Therefore, unusual values were investigated rather than immediately changed.
+1. BTS T-100 Segment operational data
+2. BTS Aircraft Type reference
+3. United Airlines 2025 fleet reference
+4. OurAirports airport reference
+5. Aircraft range reference
+6. BTS Form 41 Schedule P-5.2 aircraft operating-cost and fuel data
 
-The profiling process followed this general approach:
+The overall Bronze process is:
 
 ```text
-Load Raw Data
-      ↓
-Understand Source Coverage
-      ↓
-Check Data Quality
-      ↓
-Understand Row Grain
-      ↓
-Test Relationships Between Sources
-      ↓
-Investigate Failed Matches
-      ↓
-Document Findings
-      ↓
+Raw Source Files
+       ↓
+Bronze Tables
+       ↓
+Source Profiling
+       ↓
+Data Quality Investigation
+       ↓
+Understand Grain
+       ↓
+Validate Relationships
+       ↓
+Document Source Issues
+       ↓
 Define Silver Transformations
 ```
 
-The main profiling SQL is stored in:
+The Bronze layer deliberately avoids applying business logic too early.
+
+An important principle used throughout the project is:
+
+> Preserve the source in Bronze, investigate unusual values, and perform controlled cleaning and standardisation in Silver.
+
+The main Bronze scripts are:
 
 ```text
+02_ddl_bronze.sql
+03_proc_load_bronze.sql
 04_bronze_quality_checks.sql
 ```
+
+---
+
+# Bronze Architecture
+
+The current Bronze layer contains:
+
+```text
+bronze.t100_segment_raw
+
+bronze.aircraft_types_raw
+
+bronze.united_fleet_raw
+
+bronze.airports_raw
+
+bronze.aircraft_range_raw
+
+bronze.aircraft_operating_cost_raw
+```
+
+The relationship between the sources and later analytical use is:
+
+```text
+BTS T-100
+    │
+    └── Route demand
+        Seats
+        Passengers
+        Departures
+        Distance
+        Aircraft type
+        Air time
+        Month
+
+BTS Aircraft Types
+    │
+    └── Decode BTS aircraft codes
+
+United Fleet
+    │
+    └── Fleet size
+        Seat capacity
+        Aircraft names
+        Average age
+
+OurAirports
+    │
+    └── Airport names
+        Coordinates
+        Country
+        Region
+
+Aircraft Range
+    │
+    └── Reference aircraft range
+
+BTS Form 41 Schedule P-5.2
+    │
+    └── Fuel
+        Operating cost
+        Maintenance
+        Aircraft utilisation
+```
+
+Together these sources support the project's main analytical question:
+
+> For each United Airlines U.S. domestic route, which aircraft in the existing fleet appears best suited based on passenger demand, aircraft capacity, route distance and, in the extended model, aircraft operating economics?
+
+---
+
+# Source 1 - BTS T-100 Segment Data
+
+The T-100 Segment dataset is the main operational source.
+
+It contains measures including:
+
+```text
+Departures Scheduled
+Departures Performed
+Passengers
+Seats
+Payload
+Freight
+Mail
+Distance
+Air Time
+Ramp-to-Ramp Time
+Carrier
+Origin
+Destination
+Aircraft Type
+Aircraft Configuration
+Year
+Quarter
+Month
+Service Class
+```
+
+The raw source includes multiple airlines and multiple service categories.
+
+Filtering to United Airlines is intentionally deferred to Silver.
 
 ---
 
@@ -42,7 +157,7 @@ The main profiling SQL is stored in:
 
 ## Check
 
-The first check reviewed which years were contained in the raw T-100 dataset.
+The first profiling step confirms which years exist in the operational source.
 
 ```sql
 SELECT DISTINCT
@@ -51,45 +166,33 @@ FROM bronze.t100_segment_raw
 ORDER BY year;
 ```
 
-## Why this check was performed
+## Why this matters
 
-The project is focused on United Airlines operations during 2025.
-
-Even though the source file was downloaded for this period, I did not want to assume that the dataset contained only the expected year.
-
-Checking the year coverage first confirms whether an explicit year filter will be required later.
-
-## Reasoning
-
-A data pipeline should validate the contents of a source rather than relying only on the file name or download settings.
-
-For example, if the source unexpectedly contained:
+The project scope is:
 
 ```text
-2024
-2025
-2026
+Year = 2025
 ```
 
-then the analysis could accidentally combine multiple years.
+A file name or download selection should not be treated as proof that every record belongs to the expected period.
+
+The data itself should be validated.
 
 ## Silver impact
 
-The Silver transformation can explicitly restrict the project to:
+The operational Silver transformation explicitly applies:
 
 ```sql
 WHERE year = 2025
 ```
 
-This makes the scope of the project clear and reproducible.
+This makes the project period reproducible and transparent.
 
 ---
 
 # 2. T-100 Carrier Distribution
 
 ## Check
-
-The next check identified which airlines were contained in the raw T-100 dataset.
 
 ```sql
 SELECT
@@ -103,29 +206,23 @@ GROUP BY
 ORDER BY row_count DESC;
 ```
 
-## Why this check was performed
+## Finding
 
-The Bronze table contains data for multiple airlines because the raw BTS source was loaded without filtering.
+The source contains many airlines.
 
-The project itself focuses on United Airlines.
-
-Before filtering the data, I wanted to confirm how United was represented in the source.
-
-United is identified by:
+United Airlines is represented using:
 
 ```text
 unique_carrier = UA
 ```
 
-## Reasoning
+## Why this matters
 
-Filtering should take place in the Silver layer rather than Bronze.
-
-Bronze preserves the original source, while Silver creates the project-specific cleaned dataset.
+The project is United-specific, but Bronze should still preserve the full downloaded source.
 
 ## Silver impact
 
-The operational Silver dataset will use:
+Silver applies:
 
 ```sql
 WHERE unique_carrier = 'UA'
@@ -134,8 +231,6 @@ WHERE unique_carrier = 'UA'
 ---
 
 # 3. United Service Class Distribution
-
-## Check
 
 United records were grouped by the T-100 `class` field.
 
@@ -151,44 +246,43 @@ ORDER BY row_count DESC;
 
 ## Result
 
-The following records were identified:
-
 ```text
-Class   Row Count
------   ---------
-F       53,822
-L          881
-P          339
+Class    Rows
+-----    ------
+F        53,822
+L           881
+P           339
 ```
 
-## Why this check was performed
+## Important interpretation
 
-The project is focused on United's normal scheduled passenger operations.
+The T-100 `class` field represents a service category.
 
-The `class` field in T-100 represents the type of airline service being reported.
+It does **not** represent cabin classes such as:
 
-It does not mean passenger cabin classes such as First Class, Business Class or Economy.
+```text
+First Class
+Business Class
+Economy
+```
 
-The majority of United records were Class `F`, which is the service category relevant to the project.
+Class `F` is the scheduled service category relevant to the passenger-demand analysis in this project.
 
 ## Silver impact
 
-The main Silver operational dataset will use:
+The main operational dataset uses:
 
 ```sql
 WHERE unique_carrier = 'UA'
   AND class = 'F'
+  AND year = 2025
 ```
-
-This keeps the analysis focused on the scheduled operations relevant to passenger demand and aircraft deployment.
 
 ---
 
 # 4. Monthly Coverage
 
-## Check
-
-United Class F records were grouped by month.
+Monthly coverage was checked because seasonality is central to the project.
 
 ```sql
 SELECT
@@ -201,45 +295,42 @@ GROUP BY month
 ORDER BY month;
 ```
 
-## Why this check was performed
+## Why this matters
 
-Monthly demand is important to this project.
-
-An annual average can hide seasonal changes.
-
-For example:
+An annual average could hide meaningful differences between:
 
 ```text
-January     Lower Demand
-February    Lower Demand
-March       Demand Increases
-...
-July        Higher Demand
-August      Higher Demand
-...
+Winter
+Spring
+Summer
+Autumn
 ```
 
-If one or more months were missing, a Power BI seasonality visual could be misleading.
+For example, an aircraft that appears well matched to average annual demand may become:
 
-## Reasoning
+```text
+Too Small
+```
 
-The project is not only interested in total annual passenger demand.
+during a peak month or:
 
-It also wants to understand whether an aircraft appears suitable throughout the year or whether demand changes significantly by month.
+```text
+Potentially Oversized
+```
 
-## Silver impact
+during a lower-demand month.
 
-Month will remain part of the analytical grain.
+## Project decision
 
-The route data will not immediately be aggregated into one annual record.
+Month remains part of the analytical grain.
+
+The project does not immediately collapse route activity into a single annual average.
 
 ---
 
 # 5. Zero Performed Departures
 
 ## Check
-
-The data was checked for United Class F records where no departures were performed.
 
 ```sql
 SELECT COUNT(*) AS zero_departure_rows
@@ -255,37 +346,23 @@ WHERE unique_carrier = 'UA'
 64 records
 ```
 
-were identified where:
+## Why this matters
 
-```text
-departures_performed = 0
-```
-
-## Why this check was performed
-
-One of the planned metrics is:
+One of the later metrics is:
 
 ```text
 Passengers per Flight
 =
-Passengers / Departures Performed
+Passengers
+/
+Departures Performed
 ```
 
-A calculation cannot divide by zero.
+Division by zero must be handled safely.
 
-For example:
+## Silver / Gold approach
 
-```text
-150 / 0
-```
-
-would cause a SQL error.
-
-## Silver impact
-
-Zero departures will need controlled handling.
-
-A calculation can use:
+Calculations use:
 
 ```sql
 NULLIF(departures_performed, 0)
@@ -294,20 +371,18 @@ NULLIF(departures_performed, 0)
 For example:
 
 ```sql
-passengers / NULLIF(departures_performed, 0)
+passengers
+/
+NULLIF(departures_performed, 0)
 ```
 
-If `departures_performed` is zero, `NULLIF()` converts the denominator to `NULL`, preventing a divide-by-zero error.
-
-The underlying Bronze record is still preserved.
+If performed departures equals zero, the denominator becomes `NULL` instead of causing an error.
 
 ---
 
-# 6. Negative Value Checks
+# 6. Negative Operational Values
 
-## Check
-
-Operational measures were checked for unexpected negative values.
+Operational measures were checked for impossible negative values.
 
 ```sql
 SELECT *
@@ -318,178 +393,148 @@ WHERE departures_performed < 0
    OR distance < 0;
 ```
 
-## Why this check was performed
-
 Values such as:
 
 ```text
 -20 passengers
--5 departures
--500 distance
+-5 flights
+-500 miles
 ```
 
-would not make sense for this analysis.
+would indicate either a source problem or an ingestion problem.
 
-Negative values could indicate source-data problems or ingestion issues.
-
-## Reasoning
-
-Before calculations are built on top of operational measures, basic validity should be checked.
-
-## Silver impact
-
-Any invalid records identified would need to be investigated before entering the analytical layer.
+Basic validity should be checked before creating analytical metrics.
 
 ---
 
 # 7. Key Field NULL Checks
 
-## Check
-
-Important fields were tested for missing values.
+Important analytical fields were reviewed for missing values.
 
 ```sql
 SELECT
-    SUM(CASE WHEN origin IS NULL THEN 1 ELSE 0 END) AS null_origin,
-    SUM(CASE WHEN dest IS NULL THEN 1 ELSE 0 END) AS null_destination,
-    SUM(CASE WHEN aircraft_type IS NULL THEN 1 ELSE 0 END) AS null_aircraft_type,
-    SUM(CASE WHEN passengers IS NULL THEN 1 ELSE 0 END) AS null_passengers,
-    SUM(CASE WHEN seats IS NULL THEN 1 ELSE 0 END) AS null_seats,
-    SUM(CASE WHEN distance IS NULL THEN 1 ELSE 0 END) AS null_distance
+    SUM(CASE WHEN origin IS NULL THEN 1 ELSE 0 END)
+        AS null_origin,
+
+    SUM(CASE WHEN dest IS NULL THEN 1 ELSE 0 END)
+        AS null_destination,
+
+    SUM(CASE WHEN aircraft_type IS NULL THEN 1 ELSE 0 END)
+        AS null_aircraft_type,
+
+    SUM(CASE WHEN passengers IS NULL THEN 1 ELSE 0 END)
+        AS null_passengers,
+
+    SUM(CASE WHEN seats IS NULL THEN 1 ELSE 0 END)
+        AS null_seats,
+
+    SUM(CASE WHEN distance IS NULL THEN 1 ELSE 0 END)
+        AS null_distance
+
 FROM bronze.t100_segment_raw
+
 WHERE unique_carrier = 'UA'
   AND class = 'F';
 ```
 
-## Why this check was performed
-
-These fields are essential to the project.
-
-For example:
+## Why these fields matter
 
 ```text
-Missing origin
+Missing Origin
 → Route cannot be identified
 
-Missing destination
+Missing Destination
 → Route cannot be identified
 
-Missing aircraft type
-→ Aircraft suitability cannot be evaluated
+Missing Aircraft Type
+→ Aircraft cannot be evaluated
 
-Missing passengers
-→ Demand cannot be calculated
+Missing Passengers
+→ Demand cannot be measured
 
-Missing seats
-→ Capacity cannot be calculated
+Missing Seats
+→ Capacity cannot be measured
 
-Missing distance
-→ Range suitability cannot be evaluated
+Missing Distance
+→ Range feasibility cannot be evaluated
 ```
 
-## SQL technique
-
-The query uses conditional aggregation:
+This check also practised conditional aggregation using:
 
 ```sql
-SUM(
-    CASE
-        WHEN origin IS NULL THEN 1
-        ELSE 0
-    END
-)
-```
-
-Each missing value contributes `1`, while every valid value contributes `0`.
-
-The values are then added together.
-
-## SQL skills practised
-
-```text
-CASE
-SUM
-IS NULL
-Conditional aggregation
+SUM(CASE WHEN ... THEN 1 ELSE 0 END)
 ```
 
 ---
 
 # 8. United Aircraft Type Codes
 
-## Check
+T-100 identifies aircraft using BTS numerical codes.
 
-The aircraft type codes used by United were identified.
-
-```sql
-SELECT
-    aircraft_type,
-    COUNT(*) AS row_count
-FROM bronze.t100_segment_raw
-WHERE unique_carrier = 'UA'
-  AND class = 'F'
-GROUP BY aircraft_type
-ORDER BY aircraft_type;
-```
-
-## Why this check was performed
-
-T-100 stores aircraft using numerical codes such as:
+Examples include:
 
 ```text
 612
 614
+622
+623
+624
+626
 627
+634
+637
+694
 698
 721
+837
 838
 839
+887
+888
+889
 ```
 
-These codes are not meaningful to a Power BI user on their own.
+These values are useful for joins but are not suitable as final Power BI labels.
 
-They need to be matched to the BTS aircraft reference.
+The BTS Aircraft Type lookup is therefore required to decode the operational records.
 
 ---
 
-# 9. Understanding Data Grain
+# 9. Understanding T-100 Grain
 
-One of the most important profiling tasks was determining the grain of the T-100 data.
+One of the most important Bronze profiling tasks was understanding:
 
-## What is grain?
+> What does one source row represent?
 
-Grain means:
-
-> What does one row in a table represent?
-
-For the Silver route dataset, the intended grain is:
+The analytical grain required later is:
 
 ```text
-ONE ROW
+One Row
 =
-ONE MONTH
-+ ONE ORIGIN
-+ ONE DESTINATION
-+ ONE AIRCRAFT TYPE
+One Year
++ One Month
++ One Origin
++ One Destination
++ One Aircraft Type
 ```
 
 For example:
 
 ```text
-January 2025
-EWR → SFO
+2025
+January
+EWR
+SFO
 Aircraft Type 627
 ```
 
-should ideally appear once in the Silver analytical table.
+should become one Silver analytical row.
 
 ---
 
-# 10. Checking the Intended Monthly Grain
+# 10. Testing the Intended Monthly Grain
 
-## Check
-
-The raw data was grouped using the intended Silver grain.
+The raw source was grouped using the intended Silver key.
 
 ```sql
 SELECT
@@ -499,82 +544,27 @@ SELECT
     dest,
     aircraft_type,
     COUNT(*) AS record_count
+
 FROM bronze.t100_segment_raw
+
 WHERE unique_carrier = 'UA'
   AND class = 'F'
+
 GROUP BY
     year,
     month,
     origin,
     dest,
     aircraft_type
+
 HAVING COUNT(*) > 1
+
 ORDER BY record_count DESC;
-```
-
-## Why `HAVING COUNT(*) > 1` was used
-
-This asks:
-
-> Are there multiple Bronze rows representing the same year, month, route and aircraft type?
-
-If no duplicates existed at this grain, the query would return no rows.
-
-Instead, multiple combinations appeared more than once.
-
-For example:
-
-```text
-2025
-January
-EWR → SFO
-Aircraft Type 627
-Record Count = 3
 ```
 
 ## Finding
 
-The Bronze source is more detailed than the monthly route-aircraft grain required for the analysis.
-
-This does not automatically mean the records are incorrect duplicates.
-
-They may represent separate source records that should be combined analytically.
-
----
-
-# 11. Investigating EWR → SFO Aircraft 627
-
-To understand why three records existed, they were inspected directly.
-
-```sql
-SELECT
-    year,
-    month,
-    origin,
-    dest,
-    aircraft_type,
-    aircraft_config,
-    departures_scheduled,
-    departures_performed,
-    passengers,
-    seats,
-    distance,
-    air_time
-FROM bronze.t100_segment_raw
-WHERE unique_carrier = 'UA'
-  AND class = 'F'
-  AND year = 2025
-  AND month = 1
-  AND origin = 'EWR'
-  AND dest = 'SFO'
-  AND aircraft_type = 627;
-```
-
-## Result
-
-Three separate Bronze records were returned.
-
-The rows had the same:
+Multiple source rows can represent the same:
 
 ```text
 Year
@@ -582,23 +572,55 @@ Month
 Origin
 Destination
 Aircraft Type
-Aircraft Configuration
-Distance
 ```
 
-but different operational totals.
+These are not automatically bad duplicates.
 
-## Finding
-
-These records should not simply be deleted as duplicates.
-
-They contain operational activity that needs to be combined at the analytical level.
+They can represent separate operational source records that need to be combined for the project's analytical grain.
 
 ---
 
-# 12. Validating the Monthly Aggregation
+# 11. EWR → SFO Worked Example
 
-The records were then aggregated.
+A useful example was:
+
+```text
+January 2025
+EWR → SFO
+Aircraft Type 627
+```
+
+Three Bronze records existed.
+
+They contained:
+
+```text
+Row 1
+Performed Departures: 1
+Passengers: 209
+Seats: 276
+Distance: 2,565
+
+Row 2
+Performed Departures: 1
+Passengers: 220
+Seats: 276
+Distance: 2,565
+
+Row 3
+Performed Departures: 126
+Passengers: 30,480
+Seats: 35,040
+Distance: 2,565
+```
+
+Deleting two records as duplicates would therefore remove genuine operational activity.
+
+---
+
+# 12. Validating Monthly Aggregation
+
+The records were aggregated using:
 
 ```sql
 SELECT
@@ -608,14 +630,23 @@ SELECT
     dest,
     aircraft_type,
 
-    SUM(departures_scheduled) AS departures_scheduled,
-    SUM(departures_performed) AS departures_performed,
-    SUM(passengers) AS passengers,
-    SUM(seats) AS seats,
+    SUM(departures_scheduled)
+        AS departures_scheduled,
 
-    MAX(distance) AS distance,
+    SUM(departures_performed)
+        AS departures_performed,
 
-    SUM(air_time) AS air_time
+    SUM(passengers)
+        AS passengers,
+
+    SUM(seats)
+        AS seats,
+
+    MAX(distance)
+        AS distance,
+
+    SUM(air_time)
+        AS air_time
 
 FROM bronze.t100_segment_raw
 
@@ -637,20 +668,18 @@ GROUP BY
 
 ## Result
 
-The three Bronze rows became one monthly analytical row:
+```text
+Scheduled Departures     126
+Performed Departures     128
+Passengers            30,909
+Seats                 35,592
+Distance               2,565
+Air Time              41,954
+```
 
-| Measure | Result |
-|---|---:|
-| Scheduled Departures | 126 |
-| Performed Departures | 128 |
-| Passengers | 30,909 |
-| Seats | 35,592 |
-| Distance | 2,565 |
-| Air Time | 41,954 |
+## Why SUM is used
 
-## Why some fields use SUM()
-
-These measures represent activity that accumulates:
+Measures such as:
 
 ```text
 Passengers
@@ -659,37 +688,28 @@ Departures
 Air Time
 ```
 
-Therefore they are added together.
+represent activity.
 
-For example:
+They accumulate and therefore use:
 
-```text
-Passengers
-209
-+ 220
-+ 30,480
-=
-30,909
+```sql
+SUM()
 ```
 
-## Why distance uses MAX()
+## Why distance is not summed
 
-Distance represents a route characteristic.
+Distance is a route characteristic.
 
-The route does not become longer because multiple source rows exist.
-
-Adding:
+Three records at:
 
 ```text
-2,565
-+ 2,565
-+ 2,565
+2,565 miles
 ```
 
-would incorrectly produce:
+do not imply that the route is:
 
 ```text
-7,695
+7,695 miles
 ```
 
 Therefore an appropriate value such as:
@@ -700,19 +720,9 @@ MAX(distance)
 
 is retained.
 
-## Silver impact
-
-The intended Silver grain is confirmed as:
-
-```text
-One Month
-+ One Directional Route
-+ One Aircraft Type
-```
-
 ---
 
-# 13. Why the Route is Directional
+# 13. Directional Routes
 
 The project treats:
 
@@ -726,15 +736,17 @@ and:
 SFO → EWR
 ```
 
-as different directional routes.
+as different routes.
 
-Therefore both `origin` and `dest` remain part of the grain.
+Origin and destination therefore both remain part of the analytical grain.
+
+This allows directional demand differences to remain visible.
 
 ---
 
 # 14. Why Month Remains in the Grain
 
-It would be possible to aggregate the entire year into:
+An annual table such as:
 
 ```text
 2025
@@ -742,27 +754,44 @@ EWR → SFO
 Aircraft 627
 ```
 
-but this would remove seasonality.
+would remove seasonality.
 
-Keeping month allows Power BI to answer questions such as:
+Keeping monthly detail allows later analysis of questions such as:
 
 ```text
-Does this route have higher demand in summer?
+When is route demand highest?
 
-Is an aircraft suitable all year?
+Does the best-fit aircraft change by month?
 
-Does capacity become tight during particular months?
+Does a route become capacity tight during peak periods?
+
+Is an aircraft oversized during quieter months?
 ```
-
-Therefore the monthly level was deliberately retained.
 
 ---
 
-# 15. Matching Aircraft Codes to the BTS Lookup
+# Source 2 - BTS Aircraft Type Lookup
 
-## Check
+The aircraft-type reference provides readable descriptions for BTS aircraft codes.
 
-T-100 aircraft codes were matched to the BTS aircraft lookup.
+For example:
+
+```text
+614
+→ Boeing 737-800 family
+
+698
+→ Airbus A319 family
+
+838
+→ Boeing 737 MAX 8 family
+```
+
+---
+
+# 15. Aircraft Code Matching
+
+The operational aircraft codes were tested against the aircraft reference.
 
 ```sql
 SELECT DISTINCT
@@ -771,6 +800,7 @@ SELECT DISTINCT
     a.manufacturer,
     a.long_name,
     a.short_name
+
 FROM bronze.t100_segment_raw AS t
 
 LEFT JOIN bronze.aircraft_types_raw AS a
@@ -782,39 +812,14 @@ WHERE t.unique_carrier = 'UA'
 ORDER BY t.aircraft_type;
 ```
 
-## Why this check was performed
-
-T-100 contains values such as:
-
-```text
-614
-698
-838
-```
-
-while the aircraft lookup gives these codes meaning.
-
-For example:
-
-```text
-614 → Boeing 737-800
-698 → Airbus A319
-838 → Boeing 737 MAX 8 family
-```
-
-This makes the operational data understandable.
-
 ---
 
 # 16. Checking for Unmatched Aircraft Codes
 
-## Check
-
-A `LEFT JOIN` was used to identify codes that failed to match.
-
 ```sql
 SELECT DISTINCT
     t.aircraft_type
+
 FROM bronze.t100_segment_raw AS t
 
 LEFT JOIN bronze.aircraft_types_raw AS a
@@ -831,34 +836,23 @@ WHERE t.unique_carrier = 'UA'
 0 rows
 ```
 
-## What this means
-
-Every United aircraft code used in T-100 successfully exists in the BTS aircraft reference.
-
-The join therefore provides full aircraft-code coverage for the United operational data being analysed.
+All United aircraft codes used in the relevant T-100 data had coverage in the BTS aircraft reference.
 
 ---
 
-# 17. Why a LEFT JOIN Was Used
+# 17. Why LEFT JOIN is Useful for Validation
 
-A normal inner join would only return successful matches.
+An `INNER JOIN` would only return successful matches.
 
-That could hide problems.
+That could hide missing reference data.
 
-A `LEFT JOIN` keeps every record from the operational data, even if a lookup match does not exist.
+Using:
 
-Conceptually:
-
-```text
-T-100 Aircraft Code
-        |
-        | LEFT JOIN
-        v
-Aircraft Reference
-        |
-        v
-Successful match OR NULL
+```sql
+LEFT JOIN
 ```
+
+keeps all records from the operational dataset.
 
 Then:
 
@@ -866,60 +860,62 @@ Then:
 WHERE a.ac_typeid IS NULL
 ```
 
-shows only the failures.
+isolates failed matches.
 
-This pattern is useful for testing reference-data coverage.
+This pattern is useful throughout data engineering for validating reference-data coverage.
 
 ---
 
-# 18. Reviewing the United Fleet Reference
+# Source 3 - United Airlines Fleet Reference
 
-## Check
-
-The United fleet table was inspected.
-
-```sql
-SELECT
-    aircraft_type,
-    total,
-    owned,
-    leased,
-    seats_in_standard_configuration,
-    average_age_years
-FROM bronze.united_fleet_raw
-ORDER BY aircraft_type;
-```
-
-## Why this check was performed
-
-The United fleet source will eventually provide information such as:
+The fleet dataset adds aircraft information including:
 
 ```text
 Aircraft Type
-Fleet Size
+Total Aircraft
 Owned Aircraft
 Leased Aircraft
-Seat Capacity
+Seat Configuration
 Average Age
 ```
 
-Before using it, its raw formatting needed to be understood.
+The source contains 19 United mainline aircraft types.
+
+Several raw formatting issues were identified before Silver transformation.
 
 ---
 
-# 19. United Fleet Cleaning Issue - Em Dash
+# 18. Fleet Numeric Fields Stored as Text
 
-Some fields contained:
+Some fields that conceptually represent numbers contain non-numeric source values.
+
+Examples include:
 
 ```text
 —
 ```
 
-instead of:
+and:
 
 ```text
-0
+167-203
 ```
+
+Because of this, several Bronze fleet columns are intentionally stored as text.
+
+Silver performs controlled conversion later.
+
+---
+
+# 19. Em-Dash Values
+
+Some fleet fields use:
+
+```text
+—
+```
+
+where a numeric value might otherwise be expected.
 
 For example:
 
@@ -927,13 +923,7 @@ For example:
 leased = —
 ```
 
-## Why this matters
-
-An em dash is text.
-
-It cannot be directly converted into an integer.
-
-For example:
+Trying to execute:
 
 ```sql
 CAST('—' AS INT)
@@ -941,43 +931,34 @@ CAST('—' AS INT)
 
 would fail.
 
-## Silver impact
-
-The Silver layer will convert appropriate dash values to numeric zero before converting the column to a numeric data type.
+Silver therefore handles these values before numeric conversion.
 
 ---
 
-# 20. United Fleet Cleaning Issue - Seat Ranges
+# 20. Seat Capacity Ranges
 
-Some aircraft have one seating value:
+Some aircraft have a single standard seat capacity:
 
 ```text
-737-800 → 166
+737-800
+166 seats
 ```
 
-while others contain ranges:
+Others have multiple configurations:
 
 ```text
-767-300ER → 167-203
-
-777-200ER → 276-362
-```
-
-## Why this matters
-
-A value such as:
-
-```text
+767-300ER
 167-203
+
+777-200ER
+276-362
 ```
 
-cannot be stored directly as a single integer.
+A range cannot be represented by one integer without losing information.
 
-It contains two useful values.
+## Silver decision
 
-## Silver impact
-
-The seating field can be separated into:
+Seat configuration is split into:
 
 ```text
 seats_min
@@ -988,11 +969,9 @@ For example:
 
 ```text
 167-203
-```
 
-becomes:
+becomes
 
-```text
 seats_min = 167
 seats_max = 203
 ```
@@ -1003,83 +982,115 @@ A single value:
 166
 ```
 
-can become:
+becomes:
 
 ```text
 seats_min = 166
 seats_max = 166
 ```
 
+This later allows the Gold layer to show both ends of the possible capacity range.
+
 ---
 
-# 21. Aircraft Naming Differences Between Sources
+# 21. Aircraft Naming Differences
 
-The United fleet data and BTS aircraft reference do not always use identical names.
+Different sources do not always describe the same aircraft using identical text.
 
-Examples include:
+Examples include differences such as:
 
-| United Fleet | BTS Aircraft Reference |
-|---|---|
-| 737 MAX 8 | BOEING B737 MAX 800 |
-| 737 MAX 9 | BOEING B737 MAX 900 |
-| A319-100 | AIRBUS INDUSTRIE A319 |
-| A320-200 | AIRBUS INDUSTRIE A320-100/200 |
-| A321neo | AIRBUS INDUSTRIE A321-200N |
+```text
+United Fleet
+737 MAX 8
 
-## Why this matters
+BTS
+BOEING B737 MAX 800
+```
 
-A direct join such as:
+or:
+
+```text
+United Fleet
+A319-100
+
+BTS
+AIRBUS INDUSTRIE A319
+```
+
+A text join such as:
 
 ```sql
 ON fleet.aircraft_type = aircraft.long_name
 ```
 
-would fail even though both rows refer to the same aircraft family.
+would therefore be unreliable.
 
-## Silver impact
+## Silver decision
 
-Aircraft names will need to be standardised using a controlled mapping.
-
-This avoids relying on inconsistent text descriptions.
+A controlled aircraft mapping is used instead.
 
 ---
 
 # 22. Aircraft Family Ambiguity
 
-Some BTS aircraft codes represent broader aircraft families.
+The most important aircraft-mapping limitation is BTS code:
 
-For example, a BTS code may represent a 777-200 family, while United's own fleet table separately reports:
+```text
+627
+```
+
+The BTS source identifies this at the broader:
+
+```text
+777-200 family
+```
+
+level.
+
+United's fleet reference separately contains:
 
 ```text
 777-200
 777-200ER
 ```
 
-## Why this matters
+The project does not pretend the operational source can identify an exact subtype when it cannot.
 
-The analysis should not pretend that the operational data provides greater aircraft-variant detail than it actually does.
+This limitation remains documented throughout the model.
 
-## Project decision
+---
 
-Aircraft mappings will be documented transparently.
+# Source 4 - OurAirports Airport Reference
 
-Where the source only supports a broader family-level match, the analysis will not claim an exact subtype unless it can be supported by the data.
+The airport source provides:
+
+```text
+Airport identifiers
+Airport name
+Latitude
+Longitude
+Country
+Region
+Municipality
+Scheduled-service indicator
+```
+
+Latitude and longitude are later used for Power BI mapping.
 
 ---
 
 # 23. Airport Reference Matching
 
-## Check
-
-United origin airports were matched to the airport reference.
+United airport codes were compared against the airport reference.
 
 ```sql
 SELECT DISTINCT
     t.origin,
     a.iata_code,
-    a.name AS airport_name,
+    a.name,
     a.latitude_deg,
     a.longitude_deg
+
 FROM bronze.t100_segment_raw AS t
 
 LEFT JOIN bronze.airports_raw AS a
@@ -1091,522 +1102,1007 @@ WHERE t.unique_carrier = 'UA'
 ORDER BY t.origin;
 ```
 
-## Why this check was performed
+---
 
-The airport reference provides information required later for Power BI, including:
+# 24. Checking Both Origins and Destinations
+
+Testing only origin airports would be incomplete.
+
+An airport might appear:
 
 ```text
-Airport Name
-Latitude
-Longitude
-Municipality
-Region
-Country
+only as an origin
 ```
 
-Latitude and longitude will support the route map.
+or:
+
+```text
+only as a destination
+```
+
+A complete route-airport validation therefore needs both.
+
+A combined list can be created using:
+
+```sql
+SELECT origin AS airport_code
+FROM bronze.t100_segment_raw
+WHERE unique_carrier = 'UA'
+  AND class = 'F'
+
+UNION
+
+SELECT dest
+FROM bronze.t100_segment_raw
+WHERE unique_carrier = 'UA'
+  AND class = 'F';
+```
+
+`UNION` creates one unique list of airports used on either side of a route.
 
 ---
 
-# 24. Checking for Unmatched Airport Codes
+# 25. Palm Beach Airport Mismatch
 
-## Check
+During airport-reference validation, Palm Beach required investigation.
 
-A `LEFT JOIN` was used to find United airports that could not be matched.
-
-```sql
-SELECT DISTINCT
-    t.origin
-FROM bronze.t100_segment_raw AS t
-
-LEFT JOIN bronze.airports_raw AS a
-    ON t.origin = a.iata_code
-
-WHERE t.unique_carrier = 'UA'
-  AND t.class = 'F'
-  AND a.iata_code IS NULL
-
-ORDER BY t.origin;
-```
-
-## Result
-
-One unmatched airport code appeared:
+T-100 uses:
 
 ```text
 PBI
 ```
 
-## Important reasoning
-
-This does not immediately prove that the airport is missing.
-
-It only proves:
-
-```text
-T-100 origin code
-PBI
-
-did not equal any
-
-airports_raw.iata_code
-```
-
-The next step was therefore investigation rather than editing the data.
-
----
-
-# 25. Investigating the Unmatched PBI Airport
-
-## Check
-
-The airport reference was searched using several possible identifiers.
-
-```sql
-SELECT *
-FROM bronze.airports_raw
-WHERE iata_code = 'PBI'
-   OR ident = 'KPBI'
-   OR name LIKE '%Palm Beach%';
-```
-
-## Why several conditions were used
-
-The airport might have failed the IATA-code match but still exist under:
-
-```text
-ICAO / Ident code
-Airport name
-Location
-```
-
-This is a useful troubleshooting approach when integrating independent reference datasets.
-
-## Finding
-
-The airport existed in the airport reference under:
+while the relevant physical airport record in the OurAirports source contains:
 
 ```text
 ident = KPBI
 ```
 
-Therefore it was not a missing-airport problem.
+and an unexpected source `iata_code` value.
+
+The discrepancy was investigated rather than silently changing Bronze.
 
 ---
 
-# 26. Inspecting the KPBI IATA Value
+# 26. LEN vs DATALENGTH Investigation
 
-## Check
+SQL Server checks were used to confirm that the unexpected airport value was not simply caused by hidden spaces.
 
-The exact stored IATA value was inspected.
+Conceptually:
 
 ```sql
-SELECT
-    ident,
-    name,
-    iata_code,
-    '[' + iata_code + ']' AS iata_with_brackets,
-    LEN(iata_code) AS character_length,
-    DATALENGTH(iata_code) AS stored_length
-FROM bronze.airports_raw
-WHERE ident = 'KPBI';
+LEN(iata_code)
 ```
 
-## Result
+counts characters.
 
-The source contained:
-
-```text
-ident = KPBI
-iata_code = DJT
-```
-
-while the 2025 T-100 data contained:
-
-```text
-PBI
-```
-
-Therefore the two sources describe the same physical airport using different IATA references.
-
----
-
-# 27. Why Brackets Were Added Around the Code
-
-This expression was used:
+For an `NVARCHAR` value:
 
 ```sql
-'[' + iata_code + ']'
+DATALENGTH(iata_code)
 ```
 
-It does not alter the source value.
+returns the number of bytes used.
 
-It simply makes the beginning and end of the text easier to see.
-
-For example:
-
-```text
-[PBI]
-```
-
-shows a clean three-character value.
-
-A value containing a trailing space could appear as:
-
-```text
-[PBI ]
-```
-
-A leading space could appear as:
-
-```text
-[ PBI]
-```
-
-This is a useful debugging technique when a text-based join unexpectedly fails.
-
----
-
-# 28. Understanding LEN()
-
-`LEN()` returns the number of characters in a string.
-
-For:
-
-```text
-DJT
-```
-
-the result is:
-
-```text
-3
-```
-
-However, SQL Server's `LEN()` does not count trailing spaces.
-
-Therefore:
-
-```text
-'PBI '
-```
-
-can still appear to have a length of:
-
-```text
-3
-```
-
-This means `LEN()` alone should not always be relied on when investigating trailing whitespace.
-
----
-
-# 29. Understanding DATALENGTH()
-
-`DATALENGTH()` returns the number of bytes used to store the value.
-
-The Bronze airport code column uses:
-
-```text
-NVARCHAR
-```
-
-which normally uses two bytes per character.
-
-Therefore:
-
-```text
-DJT
-```
-
-uses:
-
-```text
-3 characters × 2 bytes
-=
-6 bytes
-```
-
-The observed result was therefore:
+For a three-character `NVARCHAR` value:
 
 ```text
 LEN = 3
+
 DATALENGTH = 6
 ```
 
-which was expected.
+is expected because Unicode characters use two bytes each.
 
-This helped confirm there was no hidden extra character causing the PBI mismatch.
-
----
-
-# 30. Reusable Leading and Trailing Space Check
-
-In future datasets, whitespace can be checked using:
-
-```sql
-SELECT
-    iata_code,
-    '[' + iata_code + ']' AS visible_value,
-    LEN(iata_code) AS character_length,
-    DATALENGTH(iata_code) AS stored_bytes,
-    LEN(TRIM(iata_code)) AS trimmed_length
-FROM bronze.airports_raw
-WHERE iata_code <> TRIM(iata_code);
-```
-
-## How it works
-
-`TRIM()` removes spaces from the beginning and end of the text.
-
-The condition:
-
-```sql
-WHERE iata_code <> TRIM(iata_code)
-```
-
-means:
-
-> Show me values that change when their surrounding spaces are removed.
-
-If the query returns rows, those values contain leading or trailing whitespace.
-
-## Possible Silver cleaning
-
-If appropriate, they can later be standardised using:
-
-```sql
-TRIM(iata_code)
-```
+The airport issue was therefore not caused by trailing whitespace.
 
 ---
 
-# 31. PBI Reference Mismatch Finding
+# 27. Silver Airport-Code Decision
 
-The investigation showed:
+Bronze preserves the original airport source values.
+
+Silver creates a separate analytical airport code:
 
 ```text
-2025 T-100
-PBI
+analysis_airport_code
+```
 
-Newer Airport Reference
+For the Palm Beach record:
+
+```text
+ident
+=
 KPBI
-IATA = DJT
+
+analysis_airport_code
+=
+PBI
 ```
 
-## Finding
+The original source value is also retained for lineage.
 
-The failed join was not caused by:
+This keeps the raw source unchanged while allowing the analytical datasets to join correctly.
+
+---
+
+# Source 5 - Aircraft Range Reference
+
+The aircraft range source contains manufacturer reference values for the 19 United fleet aircraft types.
+
+The main fields are:
 
 ```text
-A missing airport
-A trailing space
-A leading space
-A NULL value
+Aircraft Type
+Range in Nautical Miles
+Range in Kilometres
+Range Basis
+Source
 ```
 
-Instead it was a reference-data difference between the operational dataset and the newer airport reference.
+The values are used only for a high-level route-feasibility comparison.
 
-## Decision
+---
 
-Neither Bronze dataset was changed.
+# 28. Why Range is Included
 
-Bronze preserves:
+An aircraft might have suitable seat capacity but insufficient reference range for a route.
 
-```text
-T-100 → PBI
-Airport Reference → DJT / KPBI
-```
-
-The difference will be reconciled in Silver through a controlled mapping.
+Therefore capacity alone is not enough.
 
 Conceptually:
 
 ```text
-2025 T-100                  Airport Reference
-    PBI                         KPBI / DJT
-      \                           /
-       \                         /
-        \                       /
-             SILVER MAPPING
-                   ↓
-        Standard Airport Record
+Capacity Suitable?
+        +
+Range Suitable?
+        ↓
+Candidate Feasibility
 ```
-
-This preserves source lineage while allowing the datasets to be integrated.
 
 ---
 
-# 32. Checking Both Origins and Destinations
+# 29. Nautical Miles vs Statute Miles
 
-The initial airport check only used `origin`.
-
-A complete route contains both:
+Aircraft reference range is stored in:
 
 ```text
-Origin
-Destination
+nautical miles
 ```
 
-Therefore both sides need to be checked.
+T-100 route distance is treated in this project as:
 
-## Check
+```text
+statute miles
+```
 
-A CTE was created containing every United origin and destination airport.
+The two values should not be compared directly.
+
+The Gold layer therefore converts aircraft range using approximately:
+
+```text
+1 nautical mile
+≈
+1.15078 statute miles
+```
+
+before route-distance comparison.
+
+---
+
+# 30. Range Limitation
+
+Manufacturer reference range is not the same as operational flight-planning range.
+
+Actual usable range can depend on:
+
+```text
+Payload
+Weather
+Fuel reserves
+Aircraft configuration
+Runway conditions
+Operational restrictions
+```
+
+The project therefore treats range as:
+
+> A high-level feasibility reference, not a full aircraft performance model.
+
+---
+
+# Source 6 - BTS Form 41 Schedule P-5.2
+
+The project was extended with BTS Form 41 Schedule P-5.2.
+
+The source provides quarterly aircraft operating information including:
+
+```text
+Aircraft Fuel Expense
+
+Total Flying Operations Expense
+
+Direct Maintenance Expense
+
+Flight Equipment Maintenance Expense
+
+Total Aircraft Operating Expense
+
+Total Air Hours
+
+Aircraft Days Assigned
+
+Aircraft Fuel Issued
+
+Aircraft Type
+
+Carrier
+
+Operating Region
+
+Year
+
+Quarter
+```
+
+The raw source is stored in:
+
+```text
+bronze.aircraft_operating_cost_raw
+```
+
+---
+
+# 31. Why Operating-Cost and Fuel Data Was Added
+
+The original project evaluates aircraft primarily using:
+
+```text
+Passenger Demand
+        +
+Seat Capacity
+        +
+Route Distance
+        ↓
+Aircraft Suitability
+```
+
+This can identify:
+
+```text
+Too Small
+
+Capacity Tight
+
+Good Fit
+
+Potentially Oversized
+
+Not Suitable for Route Distance
+```
+
+However, different aircraft can produce the same capacity fit.
+
+For example:
+
+```text
+737-700
+126 seats
+
+A319-100
+126 seats
+```
+
+If both aircraft have enough range, the existing capacity and range rules may not provide enough information to distinguish between them.
+
+The new source adds:
+
+```text
+Fuel Consumption
+
+Operating Expense
+
+Maintenance Expense
+
+Aircraft Utilisation
+```
+
+The extended analytical idea becomes:
+
+```text
+Demand
++
+Capacity
++
+Range
++
+Fuel
++
+Operating Cost
+        ↓
+Stronger Candidate Comparison
+```
+
+The cost data does **not** replace the original suitability logic.
+
+Instead, it adds another decision-support dimension.
+
+---
+
+# 32. P-5.2 Row Count
+
+The downloaded source was checked after loading.
 
 ```sql
-WITH united_airports AS
-(
-    SELECT origin AS airport_code
-    FROM bronze.t100_segment_raw
-    WHERE unique_carrier = 'UA'
-      AND class = 'F'
-
-    UNION
-
-    SELECT dest AS airport_code
-    FROM bronze.t100_segment_raw
-    WHERE unique_carrier = 'UA'
-      AND class = 'F'
-)
-
 SELECT
-    u.airport_code
-FROM united_airports AS u
+    COUNT(*) AS row_count
+FROM bronze.aircraft_operating_cost_raw;
+```
 
-LEFT JOIN bronze.airports_raw AS a
-    ON u.airport_code = a.iata_code
+## Result
 
-WHERE a.iata_code IS NULL
+```text
+2,400 rows
+```
 
-ORDER BY u.airport_code;
+This confirms the expected source volume was loaded into Bronze.
+
+---
+
+# 33. P-5.2 Year Coverage
+
+```sql
+SELECT
+    year,
+    COUNT(*) AS record_count
+
+FROM bronze.aircraft_operating_cost_raw
+
+GROUP BY year
+
+ORDER BY year;
+```
+
+## Finding
+
+The downloaded source contains:
+
+```text
+2025
+```
+
+which matches the project period.
+
+---
+
+# 34. P-5.2 Quarter Coverage
+
+Schedule P-5.2 is quarterly.
+
+The source was checked using:
+
+```sql
+SELECT
+    quarter,
+    COUNT(*) AS record_count
+
+FROM bronze.aircraft_operating_cost_raw
+
+GROUP BY quarter
+
+ORDER BY quarter;
+```
+
+## Result
+
+The source contains all four quarters:
+
+```text
+1
+2
+3
+4
+```
+
+## Why this matters
+
+The planned annual aircraft economics rates will be based on all four quarters.
+
+Missing quarters could create misleading annual comparisons.
+
+---
+
+# 35. United Airlines Coverage in P-5.2
+
+The source contains multiple airlines.
+
+United records were identified using:
+
+```sql
+SELECT
+    unique_carrier,
+    unique_carrier_name,
+    COUNT(*) AS record_count
+
+FROM bronze.aircraft_operating_cost_raw
+
+WHERE unique_carrier = 'UA'
+
+GROUP BY
+    unique_carrier,
+    unique_carrier_name;
+```
+
+## Result
+
+```text
+215 United records
+```
+
+United is represented using:
+
+```text
+unique_carrier = UA
+```
+
+## Silver impact
+
+Silver will apply:
+
+```sql
+WHERE unique_carrier = 'UA'
 ```
 
 ---
 
-# 33. Understanding the CTE
+# 36. United Operating Regions
 
-This section:
+United's records were grouped by region.
 
 ```sql
-WITH united_airports AS
-(
-    ...
+SELECT
+    region,
+    COUNT(*) AS record_count
+
+FROM bronze.aircraft_operating_cost_raw
+
+WHERE unique_carrier = 'UA'
+
+GROUP BY region
+
+ORDER BY region;
+```
+
+## Result
+
+```text
+Region    Records
+------    -------
+A             42
+D             76
+L             67
+P             30
+```
+
+The dataset therefore contains United activity across several operating regions.
+
+---
+
+# 37. Why Domestic Region is Used
+
+The project scope is:
+
+```text
+United Airlines
+2025
+U.S. Domestic Routes
+```
+
+The operating-cost reference should align as closely as possible with the routes being analysed.
+
+The initial Silver economics table will therefore use:
+
+```sql
+WHERE unique_carrier = 'UA'
+  AND year = '2025'
+  AND region = 'D'
+```
+
+This avoids mixing domestic aircraft activity with Atlantic, Latin and Pacific operations when calculating the initial cost reference.
+
+---
+
+# 38. United Aircraft Type Coverage in P-5.2
+
+The new source uses the same BTS aircraft-code system already present in the operational data.
+
+For United domestic records, the usable aircraft codes include:
+
+```text
+612
+614
+622
+623
+624
+626
+627
+634
+637
+694
+698
+721
+837
+838
+839
+887
+888
+889
+```
+
+This gives:
+
+```text
+18 usable aircraft codes
+```
+
+The project can therefore reuse the existing controlled aircraft mapping.
+
+---
+
+# 39. Reusing the Existing Aircraft Mapping
+
+Because the new source uses BTS aircraft codes, the project does not need a completely new aircraft naming system.
+
+Conceptually:
+
+```text
+P-5.2 Aircraft Code
+        ↓
+silver.aircraft_mapping
+        ↓
+United Fleet Aircraft Name
+```
+
+For example:
+
+```text
+614
+→ 737-800
+
+698
+→ A319-100
+
+838
+→ 737 MAX 8
+```
+
+This is a useful example of why reusable reference tables are valuable in a data model.
+
+---
+
+# 40. P-5.2 Aircraft Code 627 Limitation
+
+The same aircraft-family ambiguity remains for:
+
+```text
+627
+```
+
+The cost source cannot automatically distinguish:
+
+```text
+777-200
+```
+
+from:
+
+```text
+777-200ER
+```
+
+when BTS reports the broader family.
+
+The project will therefore continue to document this limitation rather than inventing variant-level precision.
+
+---
+
+# 41. Generic Aircraft Code 999
+
+The source also contains:
+
+```text
+999
+```
+
+This represents a generic / summary aircraft record rather than one specific fleet type.
+
+It cannot be meaningfully compared with:
+
+```text
+737-800
+A319-100
+787-9
+```
+
+or another specific aircraft.
+
+## Silver impact
+
+The aircraft economics dataset will exclude:
+
+```sql
+aircraft_type <> '999'
+```
+
+The source record remains preserved in Bronze.
+
+---
+
+# 42. Quarterly Coverage by Aircraft Type
+
+The United domestic aircraft records were checked for complete quarterly coverage.
+
+```sql
+SELECT
+    aircraft_type,
+    COUNT(DISTINCT quarter) AS quarter_count
+
+FROM bronze.aircraft_operating_cost_raw
+
+WHERE unique_carrier = 'UA'
+  AND region = 'D'
+  AND aircraft_type <> '999'
+
+GROUP BY aircraft_type
+
+ORDER BY TRY_CAST(aircraft_type AS INT);
+```
+
+## Result
+
+All:
+
+```text
+18 usable aircraft types
+```
+
+have records for:
+
+```text
+4 quarters
+```
+
+in the domestic subset.
+
+This supports annual aggregation from Q1-Q4.
+
+---
+
+# 43. Blank Financial Values
+
+The raw source contains blank financial fields for some records.
+
+For example:
+
+```sql
+SELECT
+    COUNT(*) AS rows_with_blank_operating_cost
+
+FROM bronze.aircraft_operating_cost_raw
+
+WHERE NULLIF(
+    TRIM(tot_air_op_expenses),
+    ''
+) IS NULL;
+```
+
+These blanks are not automatically converted into zero.
+
+A blank source value and a genuine zero do not necessarily mean the same thing.
+
+Bronze therefore preserves them.
+
+---
+
+# 44. Why P-5.2 Numeric Fields Are Stored as NVARCHAR in Bronze
+
+Fields such as:
+
+```text
+fuel_fly_ops
+
+tot_air_op_expenses
+
+total_air_hours
+
+air_fuels_issued
+```
+
+represent numerical measures.
+
+However, the Bronze table stores them initially as text.
+
+This makes ingestion more tolerant of blank or unexpected source values.
+
+Silver can then safely perform:
+
+```sql
+TRY_CAST(
+    NULLIF(
+        TRIM(total_air_hours),
+        ''
+    )
+    AS DECIMAL(18,2)
 )
 ```
 
-creates a temporary named result set for the query.
-
-It does not permanently create another database table.
-
-The first query takes:
+The pattern is:
 
 ```text
-Every United Origin
-```
-
-and the second takes:
-
-```text
-Every United Destination
+Bronze
+Raw flexible representation
+        ↓
+Silver
+Validated numeric representation
+        ↓
+Gold
+Business calculations
 ```
 
 ---
 
-# 34. Why UNION Was Used
+# 45. Planned Annual Economics Aggregation
 
-`UNION` combines both result sets while removing duplicate values.
+Schedule P-5.2 provides quarterly records.
 
-Imagine the origin data contains:
+The project requires an annual aircraft-level reference.
 
-```text
-EWR
-SFO
-ORD
-EWR
-```
-
-and destinations contain:
+For example:
 
 ```text
-SFO
-DEN
-EWR
+2025 Q1  737-800
+2025 Q2  737-800
+2025 Q3  737-800
+2025 Q4  737-800
 ```
 
-After `UNION`, the result becomes:
+will become:
 
 ```text
-DEN
-EWR
-ORD
-SFO
+2025  737-800
 ```
 
-This creates one unique list of airports used anywhere in the route data.
+The annual totals will be calculated first.
 
-That list can then be compared to the airport reference.
+Conceptually:
+
+```sql
+SUM(total_air_hours)
+
+SUM(air_fuels_issued)
+
+SUM(tot_air_op_expenses)
+
+SUM(tot_flt_maint_memo)
+```
 
 ---
 
-# 35. What the Final Airport Check is Asking
+# 46. Planned Fuel Efficiency Metric
 
-The logic can be read in plain English as:
+The planned aircraft fuel measure is:
 
 ```text
-Create a list of every airport United flew to or from
-                     ↓
-Compare each airport to airports_raw
-                     ↓
-Keep all United airport codes using LEFT JOIN
-                     ↓
-Show only airports where no reference match exists
+Fuel Gallons per Airborne Hour
 ```
 
-This gives a complete test of airport-reference coverage.
+Conceptually:
+
+```text
+Total Fuel Issued
+-----------------
+Total Air Hours
+```
+
+SQL will use the annual totals:
+
+```sql
+SUM(air_fuels_issued)
+/
+NULLIF(
+    SUM(total_air_hours),
+    0
+)
+```
 
 ---
 
-# Bronze Profiling Findings
+# 47. Planned Operating-Cost Metric
 
-The profiling stage identified several important requirements for Silver.
+The planned aircraft operating-cost measure is:
 
 ```text
-T-100 Operational Data
-│
-├── Filter to United Airlines
-├── Filter to relevant scheduled service
-├── Retain monthly detail
-├── Handle zero performed departures
-├── Aggregate multiple source rows
-│   to monthly route-aircraft grain
-└── Preserve directional routes
-
-Aircraft Lookup
-│
-├── Decode BTS aircraft codes
-└── All United codes successfully matched
-
-United Fleet
-│
-├── Convert text numeric values
-├── Handle em-dash values
-├── Split seating ranges
-└── Standardise aircraft names
-
-Airport Reference
-│
-├── Convert coordinates to numeric types
-├── Validate airport-code matching
-├── Check both origins and destinations
-└── Reconcile historical PBI reference difference
+Operating Cost per Airborne Hour
 ```
+
+Conceptually:
+
+```text
+Total Aircraft Operating Expense
+---------------------------------
+Total Air Hours
+```
+
+This creates a comparable aircraft-type rate that can later be joined to viable route candidates.
+
+---
+
+# 48. Planned Maintenance Metric
+
+A similar calculation can be created for maintenance:
+
+```text
+Maintenance Cost per Airborne Hour
+```
+
+using:
+
+```text
+Flight Equipment Maintenance Expense
+------------------------------------
+Total Air Hours
+```
+
+The exact fields and terminology will remain documented in the Silver transformation.
+
+---
+
+# 49. Why Quarterly Ratios Should Not Be Averaged Directly
+
+Suppose:
+
+```text
+Quarter 1
+Fuel = 100
+Hours = 10
+
+Fuel Rate = 10 per hour
+```
+
+and:
+
+```text
+Quarter 2
+Fuel = 900
+Hours = 300
+
+Fuel Rate = 3 per hour
+```
+
+A simple average gives:
+
+```text
+(10 + 3) / 2
+=
+6.5
+```
+
+but this incorrectly gives both quarters equal weight.
+
+Instead:
+
+```text
+Total Fuel
+=
+1,000
+
+Total Hours
+=
+310
+```
+
+Therefore:
+
+```text
+1,000 / 310
+≈
+3.23 per hour
+```
+
+This better reflects the underlying activity.
+
+The project will therefore use:
+
+```text
+SUM(numerator)
+/
+SUM(denominator)
+```
+
+rather than averaging pre-calculated quarterly rates.
+
+---
+
+# 50. How Economics Extends the Business Question
+
+The first suitability model asks:
+
+```text
+Can the aircraft fly the route?
+        ↓
+Range
+
+Can the aircraft hold the observed demand?
+        ↓
+Capacity
+
+How closely does the capacity match demand?
+        ↓
+Expected Load Factor / Capacity Gap
+```
+
+The economics extension adds:
+
+```text
+What are the fuel and cost differences
+between otherwise viable aircraft?
+```
+
+The decision flow becomes:
+
+```text
+1. Range Feasibility
+
+        ↓
+
+2. Capacity Feasibility
+
+        ↓
+
+3. Capacity Fit
+
+        ↓
+
+4. Fuel / Operating Cost Comparison
+```
+
+Cost should not automatically override feasibility.
+
+A lower-cost aircraft is not useful if it cannot carry the route's observed demand or satisfy the route-distance requirement.
+
+---
+
+# 51. Cost Data Will Be Used as a Proxy
+
+The project will not claim:
+
+```text
+"This aircraft will save United exactly $X on this route."
+```
+
+Schedule P-5.2 provides aircraft-type operating information, not exact route-level accounting.
+
+Instead, future Gold calculations may produce metrics such as:
+
+```text
+Estimated Route Operating-Cost Proxy
+```
+
+based on:
+
+```text
+Average Route Airborne Time
+×
+Aircraft Operating Cost per Airborne Hour
+```
+
+This should be interpreted as a comparison aid rather than actual route profitability.
 
 ---
 
 # Planned Silver Route Grain
 
-The profiling work confirmed that the main route-performance Silver table should use:
+The Bronze profiling confirmed that the main operational Silver table should use:
 
 ```text
 One Row
@@ -1618,97 +2114,734 @@ One Year
 + One Aircraft Type
 ```
 
-Operational measures will then be aggregated appropriately.
+Operational measures are aggregated appropriately.
 
-Examples:
+Examples include:
 
 ```text
-SUM passengers
-SUM seats
-SUM departures performed
-SUM departures scheduled
-SUM air time
+SUM Passengers
+
+SUM Seats
+
+SUM Departures Scheduled
+
+SUM Departures Performed
+
+SUM Payload
+
+SUM Freight
+
+SUM Mail
+
+SUM Air Time
+
+SUM Ramp-to-Ramp Time
 ```
 
-while route characteristics such as distance will not be summed.
+Route distance is retained using an appropriate non-additive aggregation such as:
+
+```sql
+MAX(distance)
+```
 
 ---
 
-# Why Bronze Was Not Changed
+# Planned Silver Aircraft Economics Grain
 
-An important design principle throughout the profiling stage was:
+The aircraft economics data requires a different grain.
 
-> Unusual raw values are investigated in Bronze and corrected or standardised in Silver.
+The planned economics table will use:
+
+```text
+One Row
+=
+One Year
++ One BTS Aircraft Type
+```
+
+for the filtered subset:
+
+```text
+United Airlines
++
+2025
++
+Domestic Operating Region
+```
+
+The four quarterly P-5.2 records will be aggregated before annual efficiency rates are calculated.
+
+The two grains remain separate:
+
+```text
+Route Performance
+
+Year
++ Month
++ Origin
++ Destination
++ Aircraft Type
+```
+
+and:
+
+```text
+Aircraft Economics
+
+Year
++ Aircraft Type
+```
+
+They can then be related later through the controlled aircraft mapping.
+
+---
+
+# Bronze Profiling Findings
+
+The main requirements identified during Bronze profiling are:
+
+```text
+T-100 Operational Data
+│
+├── Filter to United Airlines
+├── Filter to relevant Class F service
+├── Restrict to 2025
+├── Retain monthly seasonality
+├── Preserve directional routes
+├── Handle zero performed departures
+└── Aggregate detailed source rows
+    to route-month-aircraft grain
+
+
+BTS Aircraft Lookup
+│
+├── Decode numerical aircraft codes
+└── Validate operational code coverage
+
+
+United Fleet
+│
+├── Convert text numeric values
+├── Handle em-dash values
+├── Parse seat ranges
+├── Retain min/max capacity
+└── Standardise aircraft naming
+
+
+Airport Reference
+│
+├── Convert coordinates
+├── Validate origin coverage
+├── Validate destination coverage
+├── Handle the PBI reference mismatch
+└── Create an analysis airport code
+
+
+Aircraft Range
+│
+├── Convert range values to numeric types
+├── Preserve source information
+└── Convert nautical miles before
+    comparing with route distance
+
+
+Aircraft Operating Economics
+│
+├── Filter to United Airlines
+├── Restrict to 2025
+├── Use domestic-region records
+├── Exclude generic code 999
+├── Convert raw text measures
+├── Aggregate Q1-Q4
+├── Reuse aircraft mapping
+├── Calculate fuel per air hour
+├── Calculate operating cost per air hour
+└── Calculate maintenance cost per air hour
+```
+
+---
+
+# Why Bronze Values Are Not Silently Corrected
+
+One of the core design decisions in this project is:
+
+> Source anomalies are documented in Bronze and corrected or standardised only in Silver when there is a justified transformation rule.
+
+Examples include:
+
+```text
+T-100:
+PBI
+
+OurAirports:
+unexpected PBI reference values
+```
+
+and:
+
+```text
+United Fleet:
+167-203
+
+Silver:
+seats_min = 167
+seats_max = 203
+```
+
+and:
+
+```text
+P-5.2:
+blank numeric text
+
+Silver:
+NULLIF + TRY_CAST
+```
+
+This separation improves:
+
+```text
+Data lineage
+Traceability
+Debugging
+Reproducibility
+```
+
+---
+
+# Bronze Full-Refresh Loading Pattern
+
+The Bronze procedure uses a full-refresh approach.
+
+For each source:
+
+```text
+TRUNCATE TABLE
+        ↓
+BULK INSERT
+        ↓
+Next Source
+```
+
+For example:
+
+```sql
+TRUNCATE TABLE bronze.aircraft_operating_cost_raw;
+
+BULK INSERT bronze.aircraft_operating_cost_raw
+
+FROM '...T_F41SCHEDULE_P52.csv'
+
+WITH
+(
+    FORMAT = 'CSV',
+    FIRSTROW = 2,
+    FIELDQUOTE = '"',
+    CODEPAGE = '65001',
+    TABLOCK
+);
+```
+
+---
+
+# Why TRUNCATE is Used
+
+`TRUNCATE TABLE` removes the existing rows before a full reload.
+
+The table structure remains in place.
+
+This is different from:
+
+```sql
+DROP TABLE
+```
+
+which removes the table itself.
+
+The process therefore becomes:
+
+```text
+Existing Bronze Table
+        ↓
+TRUNCATE
+        ↓
+Empty Bronze Table
+        ↓
+BULK INSERT
+        ↓
+Fresh Source Copy
+```
+
+---
+
+# Why FORMAT = 'CSV' is Used
+
+```sql
+FORMAT = 'CSV'
+```
+
+tells SQL Server that the input follows comma-separated-value parsing rules.
+
+This is preferable to manually handling delimiters where the file is a standard CSV.
+
+---
+
+# Why FIRSTROW = 2 is Used
+
+The CSV source files contain column names in the first row.
+
+```sql
+FIRSTROW = 2
+```
+
+starts ingestion from the first data record and skips the header.
+
+---
+
+# Why FIELDQUOTE is Used
+
+CSV text can contain quoted values.
 
 For example:
 
 ```text
-Bronze T-100
-PBI
-
-Bronze Airport Reference
-DJT / KPBI
+"United Air Lines Inc."
 ```
 
-Both remain untouched.
+Using:
 
-Silver handles the relationship.
+```sql
+FIELDQUOTE = '"'
+```
 
-This maintains clear source lineage and makes transformations traceable.
+allows SQL Server's CSV parser to treat quoted text correctly.
 
 ---
 
-# SQL Skills Practised During Bronze Profiling
+# Why CODEPAGE = '65001' is Used
 
-The profiling work used:
+```sql
+CODEPAGE = '65001'
+```
+
+tells SQL Server to interpret the source as UTF-8 text.
+
+This reduces the risk of corrupting characters when loading text from external CSV files.
+
+---
+
+# Why TABLOCK is Used
+
+```sql
+TABLOCK
+```
+
+allows SQL Server to use a table-level lock during the bulk load.
+
+Because this project uses a controlled full-refresh Bronze process, concurrent editing of the Bronze table is not required during ingestion.
+
+The option can therefore make the bulk-loading process more efficient.
+
+---
+
+# Stored Procedure Error Handling
+
+The Bronze loader uses:
+
+```sql
+BEGIN TRY
+```
+
+and:
+
+```sql
+BEGIN CATCH
+```
+
+so that ingestion errors can be captured and reported.
+
+Useful functions include:
+
+```sql
+ERROR_NUMBER()
+
+ERROR_LINE()
+
+ERROR_MESSAGE()
+```
+
+The procedure then uses:
+
+```sql
+THROW;
+```
+
+to re-raise the original error rather than silently hiding a failed load.
+
+---
+
+# Load Timing
+
+The stored procedure captures:
+
+```sql
+SYSDATETIME()
+```
+
+before and after the load.
+
+Elapsed time can then be calculated using:
+
+```sql
+DATEDIFF()
+```
+
+This provides simple pipeline monitoring and also demonstrates how batch duration can be measured in SQL Server.
+
+---
+
+# Bronze Quality Checks
+
+The Bronze quality-check script performs source-level validation such as:
 
 ```text
-SELECT DISTINCT
-COUNT
-GROUP BY
-ORDER BY
-HAVING
-WHERE
-CASE
-SUM
-MAX
-LEFT JOIN
-IS NULL
-CTEs
-UNION
-LEN
-DATALENGTH
-TRIM
-Aliases
-Conditional Aggregation
-Data Grain Analysis
-Reference Data Validation
+Row Counts
+
+Sample Record Review
+
+Year Coverage
+
+Month / Quarter Coverage
+
+Carrier Coverage
+
+Service Class Distribution
+
+Aircraft Code Coverage
+
+Airport-Code Matching
+
+NULL / Blank Review
+
+Known Source Anomaly Investigation
 ```
+
+The purpose is not to make Bronze perfectly clean.
+
+The purpose is to understand what was loaded and decide what Silver must do.
+
+---
+
+# SQL Skills Practised During Bronze
+
+The Bronze stage provided practical use of:
+
+```text
+CREATE TABLE
+
+DROP TABLE IF EXISTS
+
+TRUNCATE TABLE
+
+BULK INSERT
+
+CREATE OR ALTER PROCEDURE
+
+EXEC
+
+SET NOCOUNT ON
+
+DECLARE
+
+DATETIME2
+
+SYSDATETIME
+
+DATEDIFF
+
+PRINT
+
+CONCAT
+
+TRY / CATCH
+
+ERROR_NUMBER
+
+ERROR_LINE
+
+ERROR_MESSAGE
+
+THROW
+
+SELECT
+
+SELECT DISTINCT
+
+COUNT
+
+COUNT DISTINCT
+
+GROUP BY
+
+ORDER BY
+
+WHERE
+
+HAVING
+
+SUM
+
+MAX
+
+CASE
+
+LEFT JOIN
+
+UNION
+
+IS NULL
+
+NULLIF
+
+TRY_CAST
+
+TRIM
+
+LEN
+
+DATALENGTH
+
+Aliases
+
+Conditional Aggregation
+
+Data Grain Analysis
+
+Reference Data Validation
+
+Weighted Rate Reasoning
+```
+
+---
+
+# Key Data-Engineering Concepts Practised
+
+Beyond individual SQL functions, the Bronze work reinforced several broader concepts.
+
+## Data lineage
+
+Raw values remain traceable back to their source.
+
+## Grain
+
+The meaning of one row must be understood before aggregation.
+
+## Additive vs non-additive measures
+
+For example:
+
+```text
+Passengers
+→ additive
+
+Distance
+→ non-additive
+```
+
+## Reference-data validation
+
+Aircraft and airport lookup coverage should be tested rather than assumed.
+
+## Controlled transformation
+
+Cleaning rules belong in Silver rather than being hidden during raw ingestion.
+
+## Reusable mappings
+
+The BTS aircraft mapping can support more than one source.
+
+## Weighted metrics
+
+Annual rates should be calculated from total numerators and denominators rather than averaging ratios blindly.
+
+---
+
+# Bronze Limitations
+
+The Bronze layer intentionally does not attempt to solve all source issues.
+
+Examples include:
+
+```text
+Aircraft-family ambiguity
+
+Airport-code discrepancies
+
+Blank financial values
+
+Multiple aircraft seat configurations
+
+Quarterly vs monthly source grains
+
+Different naming conventions
+```
+
+These are documented and handled later where appropriate.
+
+---
+
+# Aircraft Economics Scope Limitation
+
+The P-5.2 extension improves the business value of the analysis, but it still does not create a complete airline cost model.
+
+The project does not currently model:
+
+```text
+Exact aircraft availability
+
+Tail-level aircraft assignment
+
+Crew scheduling
+
+Aircraft rotations
+
+Maintenance scheduling
+
+Airport / runway performance
+
+Weather
+
+Fuel-price variation by airport
+
+Payload-specific fuel burn
+
+Network connectivity requirements
+
+Exact route profitability
+```
+
+The economics data should therefore be interpreted as:
+
+> Aircraft-type decision-support information, not an exact scheduling or profitability model.
 
 ---
 
 # Bronze Profiling Outcome
 
-At the end of this stage:
+At the end of the Bronze stage:
 
 ```text
-Raw Data Loaded
-       ↓
-Source Coverage Checked
-       ↓
-Data Quality Checked
-       ↓
-Monthly Grain Identified
-       ↓
-Aircraft References Validated
-       ↓
+Six Raw Sources Loaded
+        ↓
+Source Coverage Validated
+        ↓
+United Carrier Codes Confirmed
+        ↓
+Service Class Analysed
+        ↓
+Monthly Coverage Validated
+        ↓
+Operational Grain Investigated
+        ↓
+Monthly Aggregation Rules Defined
+        ↓
+Aircraft Reference Coverage Validated
+        ↓
 Fleet Cleaning Requirements Identified
-       ↓
-Airport References Validated
-       ↓
-PBI Mismatch Investigated
-       ↓
-Silver Requirements Defined
+        ↓
+Airport Matching Investigated
+        ↓
+PBI Reference Issue Documented
+        ↓
+Range Source Validated
+        ↓
+P-5.2 Cost / Fuel Source Added
+        ↓
+United Domestic Economics Records Profiled
+        ↓
+Quarterly Coverage Validated
+        ↓
+Aircraft Economics Grain Defined
+        ↓
+Silver Transformation Requirements Defined
 ```
 
-The project can now move into the Silver layer, where the identified issues will be cleaned and standardised before the business-ready Gold layer is built.
+The Bronze layer now supports two related analytical areas.
+
+## Route Suitability
+
+```text
+Passenger Demand
++
+Aircraft Capacity
++
+Route Distance
+```
+
+## Aircraft Economics
+
+```text
+Fuel Use
++
+Operating Expense
++
+Maintenance Expense
++
+Aircraft Utilisation
+```
+
+These datasets can now be transformed into clean, reusable Silver tables before being combined into business-facing Gold analysis.
+
+---
+
+# Next Layer
+
+The next stage is the Silver layer.
+
+Silver is responsible for:
+
+```text
+Filtering
+
+Cleaning
+
+Data Type Conversion
+
+Standardisation
+
+Controlled Mapping
+
+Aggregation
+
+Reference Reconciliation
+```
+
+The new P-5.2 source will become an aircraft-level annual economics reference.
+
+The intended flow is:
+
+```text
+bronze.aircraft_operating_cost_raw
+        ↓
+Filter United
+        ↓
+Filter 2025
+        ↓
+Filter Domestic Region
+        ↓
+Exclude Aircraft Code 999
+        ↓
+TRY_CAST Numeric Measures
+        ↓
+Aggregate Q1-Q4
+        ↓
+Calculate Fuel / Cost Rates
+        ↓
+silver.aircraft_operating_cost
+```
+
+This new Silver table can then be integrated with the existing route-aircraft suitability model in Gold.
+
+The original capacity-and-range logic remains intact.
+
+The economics data extends the analysis rather than replacing it.
