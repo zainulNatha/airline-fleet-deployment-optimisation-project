@@ -1,192 +1,332 @@
 /*==============================================================================
-    Project:     Aircraft Route Suitability Analysis
-    Script:      03_proc_load_bronze.sql
-    Description: Loads raw CSV source files into the Bronze layer.
+Project: Aircraft Route Suitability Analysis
 
-    Process:
-        1. Empty the existing Bronze table.
-        2. Reload the latest source file using BULK INSERT.
-        3. Preserve the raw source before Silver transformations begin.
+Script: 03_proc_load_bronze.sql
 
-    NOTE:
-        Update the local file paths before executing this procedure.
+Description: Loads raw CSV source files into the Bronze layer.
+
+Process:
+
+1. Empty the existing Bronze table.
+
+2. Reload the latest source file using BULK INSERT.
+
+3. Preserve the raw source before Silver transformations begin.
+
+NOTE:
+
+Update the local file paths before executing this procedure.
 ==============================================================================*/
 
 USE AirlineRouteAnalysis;
+
 GO
 
 
 CREATE OR ALTER PROCEDURE bronze.load_bronze
+
 AS
+
 BEGIN
 
-    SET NOCOUNT ON;
+SET NOCOUNT ON;
 
-    DECLARE @start_time DATETIME2;
-    DECLARE @end_time   DATETIME2;
+DECLARE @start_time DATETIME2;
 
-    BEGIN TRY
-
-        SET @start_time = SYSDATETIME();
-
-        PRINT '================================================';
-        PRINT 'Starting Bronze Layer Load';
-        PRINT '================================================';
+DECLARE @end_time DATETIME2;
 
 
-        /*======================================================================
-            1. United Fleet
-        ======================================================================*/
+BEGIN TRY
 
-        PRINT 'Loading: bronze.united_fleet_raw';
-
-        TRUNCATE TABLE bronze.united_fleet_raw;
-
-        BULK INSERT bronze.united_fleet_raw
-        FROM 'C:\AirlineRouteAnalysis\data\raw\united_fleet_2025_raw.csv'
-        WITH
-        (
-            FORMAT = 'CSV',
-            FIRSTROW = 2,
-            FIELDQUOTE = '"',
-            CODEPAGE = '65001',
-            TABLOCK
-        );
+SET @start_time = SYSDATETIME();
 
 
-        /*======================================================================
-            2. Aircraft Range Reference
-        ======================================================================*/
+PRINT '================================================';
 
-        PRINT 'Loading: bronze.aircraft_range_raw';
+PRINT 'Starting Bronze Layer Load';
 
-        TRUNCATE TABLE bronze.aircraft_range_raw;
-
-        BULK INSERT bronze.aircraft_range_raw
-        FROM 'C:\AirlineRouteAnalysis\data\raw\aircraft_range_raw.csv'
-        WITH
-        (
-            FORMAT = 'CSV',
-            FIRSTROW = 2,
-            FIELDQUOTE = '"',
-            CODEPAGE = '65001',
-            TABLOCK
-        );
+PRINT '================================================';
 
 
-        /*======================================================================
-            3. BTS Aircraft Type Lookup
-        ======================================================================*/
+/*======================================================================
 
-        PRINT 'Loading: bronze.aircraft_types_raw';
+1. United Fleet
 
-        TRUNCATE TABLE bronze.aircraft_types_raw;
+======================================================================*/
 
-        BULK INSERT bronze.aircraft_types_raw
-        FROM 'C:\AirlineRouteAnalysis\data\raw\T_AIRCRAFT_TYPES.csv'
-        WITH
-        (
-            FORMAT = 'CSV',
-            FIRSTROW = 2,
-            FIELDQUOTE = '"',
-            CODEPAGE = '65001',
-            TABLOCK
-        );
+PRINT 'Loading: bronze.united_fleet_raw';
+
+TRUNCATE TABLE bronze.united_fleet_raw;
 
 
-        /*======================================================================
-            4. Airport Reference
+BULK INSERT bronze.united_fleet_raw
 
-            This source uses LF line endings, so ROWTERMINATOR = '0x0a'
-            is specified explicitly.
-        ======================================================================*/
+FROM 'C:\AirlineRouteAnalysis\data\raw\united_fleet_2025_raw.csv'
 
-        PRINT 'Loading: bronze.airports_raw';
+WITH
 
-        TRUNCATE TABLE bronze.airports_raw;
+(
 
-        BULK INSERT bronze.airports_raw
-        FROM 'C:\AirlineRouteAnalysis\data\raw\airports.csv'
-        WITH
-        (
-            FORMAT = 'CSV',
-            FIRSTROW = 2,
-            FIELDQUOTE = '"',
-            ROWTERMINATOR = '0x0a',
-            CODEPAGE = '65001',
-            TABLOCK
-        );
+FORMAT = 'CSV',
+
+FIRSTROW = 2,
+
+FIELDQUOTE = '"',
+
+CODEPAGE = '65001',
+
+TABLOCK
+
+);
 
 
-        /*======================================================================
-            5. BTS T-100 Segment Data
+/*======================================================================
 
-            The full dataset is loaded in Bronze.
+2. Aircraft Range Reference
 
-            United Airlines filtering will be performed later in Silver.
-        ======================================================================*/
+======================================================================*/
 
-        PRINT 'Loading: bronze.t100_segment_raw';
+PRINT 'Loading: bronze.aircraft_range_raw';
 
-        TRUNCATE TABLE bronze.t100_segment_raw;
-
-        BULK INSERT bronze.t100_segment_raw
-        FROM 'C:\AirlineRouteAnalysis\data\raw\T_T100_SEGMENT_ALL_CARRIER.csv'
-        WITH
-        (
-            FORMAT = 'CSV',
-            FIRSTROW = 2,
-            FIELDQUOTE = '"',
-            CODEPAGE = '65001',
-            TABLOCK
-        );
+TRUNCATE TABLE bronze.aircraft_range_raw;
 
 
-        /*======================================================================
-            Load Summary
-        ======================================================================*/
+BULK INSERT bronze.aircraft_range_raw
 
-        SET @end_time = SYSDATETIME();
+FROM 'C:\AirlineRouteAnalysis\data\raw\aircraft_range_raw.csv'
 
-        PRINT '================================================';
-        PRINT 'Bronze Layer Loaded Successfully';
-        PRINT 'Total Load Duration: '
-            + CAST(DATEDIFF(SECOND, @start_time, @end_time) AS NVARCHAR(20))
-            + ' seconds';
-        PRINT '================================================';
+WITH
 
-    END TRY
+(
+
+FORMAT = 'CSV',
+
+FIRSTROW = 2,
+
+FIELDQUOTE = '"',
+
+CODEPAGE = '65001',
+
+TABLOCK
+
+);
 
 
-    BEGIN CATCH
+/*======================================================================
 
-        PRINT '================================================';
-        PRINT 'Bronze Layer Load Failed';
+3. BTS Aircraft Type Lookup
 
-        PRINT 'Error Number: '
-            + CAST(ERROR_NUMBER() AS NVARCHAR(20));
+======================================================================*/
 
-        PRINT 'Error Line: '
-            + CAST(ERROR_LINE() AS NVARCHAR(20));
+PRINT 'Loading: bronze.aircraft_types_raw';
 
-        PRINT 'Error Message: '
-            + ERROR_MESSAGE();
+TRUNCATE TABLE bronze.aircraft_types_raw;
 
-        PRINT '================================================';
 
-        THROW;
+BULK INSERT bronze.aircraft_types_raw
 
-    END CATCH
+FROM 'C:\AirlineRouteAnalysis\data\raw\T_AIRCRAFT_TYPES.csv'
+
+WITH
+
+(
+
+FORMAT = 'CSV',
+
+FIRSTROW = 2,
+
+FIELDQUOTE = '"',
+
+CODEPAGE = '65001',
+
+TABLOCK
+
+);
+
+
+/*======================================================================
+
+4. Airport Reference
+
+This source uses LF line endings, so ROWTERMINATOR = '0x0a'
+is specified explicitly.
+
+======================================================================*/
+
+PRINT 'Loading: bronze.airports_raw';
+
+TRUNCATE TABLE bronze.airports_raw;
+
+
+BULK INSERT bronze.airports_raw
+
+FROM 'C:\AirlineRouteAnalysis\data\raw\airports.csv'
+
+WITH
+
+(
+
+FORMAT = 'CSV',
+
+FIRSTROW = 2,
+
+FIELDQUOTE = '"',
+
+ROWTERMINATOR = '0x0a',
+
+CODEPAGE = '65001',
+
+TABLOCK
+
+);
+
+
+/*======================================================================
+
+5. BTS T-100 Segment Data
+
+The full dataset is loaded in Bronze.
+
+United Airlines filtering will be performed later in Silver.
+
+======================================================================*/
+
+PRINT 'Loading: bronze.t100_segment_raw';
+
+TRUNCATE TABLE bronze.t100_segment_raw;
+
+
+BULK INSERT bronze.t100_segment_raw
+
+FROM 'C:\AirlineRouteAnalysis\data\raw\T_T100_SEGMENT_ALL_CARRIER.csv'
+
+WITH
+
+(
+
+FORMAT = 'CSV',
+
+FIRSTROW = 2,
+
+FIELDQUOTE = '"',
+
+CODEPAGE = '65001',
+
+TABLOCK
+
+);
+
+
+/*======================================================================
+
+6. BTS Form 41 Schedule P-5.2
+
+Quarterly aircraft operating expense, fuel, maintenance and
+utilisation data.
+
+The complete source is loaded in Bronze.
+
+United Airlines, domestic-region and aircraft filtering will be
+performed later in Silver.
+
+======================================================================*/
+
+PRINT 'Loading: bronze.aircraft_operating_cost_raw';
+
+TRUNCATE TABLE bronze.aircraft_operating_cost_raw;
+
+
+BULK INSERT bronze.aircraft_operating_cost_raw
+
+FROM 'C:\Users\ZainulNatha\Downloads\Route Analysis\data\T_F41SCHEDULE_P52.csv'
+
+WITH
+
+(
+
+FORMAT = 'CSV',
+
+FIRSTROW = 2,
+
+FIELDQUOTE = '"',
+
+CODEPAGE = '65001',
+
+TABLOCK
+
+);
+
+
+/*======================================================================
+
+Load Summary
+
+======================================================================*/
+
+SET @end_time = SYSDATETIME();
+
+
+PRINT '================================================';
+
+PRINT 'Bronze Layer Loaded Successfully';
+
+PRINT 'Total Load Duration: '
+
++ CAST(DATEDIFF(SECOND, @start_time, @end_time) AS NVARCHAR(20))
+
++ ' seconds';
+
+PRINT '================================================';
+
+
+END TRY
+
+
+BEGIN CATCH
+
+
+PRINT '================================================';
+
+PRINT 'Bronze Layer Load Failed';
+
+
+PRINT 'Error Number: '
+
++ CAST(ERROR_NUMBER() AS NVARCHAR(20));
+
+
+PRINT 'Error Line: '
+
++ CAST(ERROR_LINE() AS NVARCHAR(20));
+
+
+PRINT 'Error Message: '
+
++ ERROR_MESSAGE();
+
+
+PRINT '================================================';
+
+
+THROW;
+
+
+END CATCH
+
 
 END;
+
 GO
 
 
 /*==============================================================================
-    Execute Procedure
 
-    Uncomment to reload the complete Bronze layer.
+Execute Procedure
+
+Uncomment to reload the complete Bronze layer.
+
 ==============================================================================*/
 
 -- EXEC bronze.load_bronze;
+
 -- GO
