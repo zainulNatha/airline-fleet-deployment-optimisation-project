@@ -1,0 +1,20 @@
+﻿aircraft_type,range_nmi,range_km,range_basis,source_name,source_url
+A319-100,3750,6950,Published A319ceo range with Sharklets,Airbus,https://www.airbus.com/sites/g/files/jlcbta136/files/2021-09/EN-Airbus-A320-Facts-and-Figures.pdf
+A320-200,3350,6200,Published A320ceo range with Sharklets,Airbus,https://www.airbus.com/sites/g/files/jlcbta136/files/2021-09/EN-Airbus-A320-Facts-and-Figures.pdf
+A321neo,3400,6297,Maximum passenger range for standard A321neo in high-density layout,Airbus,https://aircraft.airbus.com/sites/g/files/jlcbta126/files/2023-12/ac_a321_1223.pdf
+737-700,2900,5370,Published maximum range,Boeing,https://www.boeing.com/commercial/737ng
+737-800,2800,5190,Published maximum range,Boeing,https://www.boeing.com/commercial/737ng
+737-900,2700,5000,Published maximum range,Boeing,https://www.boeing.com/commercial/737ng
+737-900ER,3230,5980,Maximum design range with two auxiliary tanks; full passenger payload,Boeing,https://www.boeing.com/content/dam/boeing/boeingdotcom/company/about_bca/startup/pdf/historical/737NG_passenger.pdf
+737 MAX 8,3500,6480,Published maximum range,Boeing,https://www.boeing.com/commercial/737max
+737 MAX 9,3300,6110,Published maximum range,Boeing,https://www.boeing.com/commercial/737max
+757-200,3915,7250,Maximum design range at highest optional weight; full passenger payload,Boeing,https://www.boeing.com/resources/boeingdotcom/company/about_bca/startup/pdf/historical/757_passenger.pdf
+757-300,3190,5910,Maximum design range; full passenger payload,Boeing,https://www.boeing.com/resources/boeingdotcom/company/about_bca/startup/pdf/historical/757_passenger.pdf
+767-300ER,5720,10590,Maximum design range at highest optional weight; full passenger payload,Boeing,https://www.boeing.com/content/dam/boeing/boeingdotcom/company/about_bca/startup/pdf/historical/767_passenger.pdf
+767-400ER,5445,10080,Maximum design range at highest optional weight; full passenger payload,Boeing,https://www.boeing.com/content/dam/boeing/boeingdotcom/company/about_bca/startup/pdf/historical/767_passenger.pdf
+777-200,5175,9580,Maximum design range at highest optional weight; full passenger payload,Boeing,https://www.boeing.com/content/dam/boeing/boeingdotcom/company/about_bca/startup/pdf/historical/777_passenger.pdf
+777-200ER,7500,13890,Published maximum range,Boeing,https://www.boeing.com/commercial/777
+777-300ER,7500,13890,Published maximum range,Boeing,https://www.boeing.com/commercial/777
+787-8,8000,14820,Published maximum range,Boeing,https://www.boeing.com/commercial/787
+787-9,8300,15370,Published maximum range,Boeing,https://www.boeing.com/commercial/787
+787-10,7500,13890,Published maximum range,Boeing,https://www.boeing.com/commercial/787
