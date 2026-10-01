@@ -1,0 +1,12 @@
+# Ignore raw CSV files by default
+data/raw/*.csv
+
+# Keep the smaller reproducibility datasets
+!data/raw/T_AIRCRAFT_TYPES.csv
+!data/raw/T_F41SCHEDULE_P52.csv
+!data/raw/airports.csv
+!data/raw/united_fleet_2025_raw.csv
+!data/raw/aircraft_range_raw.csv
+
+# Keep the large T-100 dataset out of Git
+data/raw/T_T100_SEGMENT_ALL_CARRIER.csv
