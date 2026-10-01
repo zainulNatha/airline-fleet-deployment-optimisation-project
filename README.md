@@ -52,15 +52,15 @@ The report allows users to explore:
 
 ### Executive Overview
 
-![Executive Overview](docs/images/executive-overview.png)
+![Executive Overview](docs/images/executive-overview.png.png)
 
 ### Route Aircraft Comparison
 
-![Route Aircraft Comparison](docs/images/route-comparison.png)
+![Route Aircraft Comparison](docs/images/route-comparison.png.png)
 
 ### Fleet Comparison
 
-![Fleet Comparison](docs/images/fleet-comparison.png)
+![Fleet Comparison](docs/images/fleet-comparison.png.png)
 
 ---
 
