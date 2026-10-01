@@ -50,17 +50,19 @@ The report allows users to explore:
 
 ## Dashboard Preview
 
+Click any screenshot to open the interactive Power BI report.
+
 ### Executive Overview
 
-![Executive Overview](docs/images/executive-overview.png.png)
+[![Executive Overview](docs/images/executive-overview.png.png)](https://app.powerbi.com/view?r=eyJrIjoiYWE5ZjFiMjUtODIwMi00NDQyLWE4OWEtZWYwMDliNTM5N2VmIiwidCI6ImNlZjk5OTUzLWM0OTYtNGE4MS1iMDYxLTNlYmU1ODRjY2ZjYyIsImMiOjh9&pageName=4a862aa3c48ce0d5dca8)
 
 ### Route Aircraft Comparison
 
-![Route Aircraft Comparison](docs/images/route-comparison.png.png)
+[![Route Aircraft Comparison](docs/images/route-comparison.png.png)](https://app.powerbi.com/view?r=eyJrIjoiYWE5ZjFiMjUtODIwMi00NDQyLWE4OWEtZWYwMDliNTM5N2VmIiwidCI6ImNlZjk5OTUzLWM0OTYtNGE4MS1iMDYxLTNlYmU1ODRjY2ZjYyIsImMiOjh9&pageName=4a862aa3c48ce0d5dca8)
 
 ### Fleet Comparison
 
-![Fleet Comparison](docs/images/fleet-comparison.png.png)
+[![Fleet Comparison](docs/images/fleet-comparison.png.png)](https://app.powerbi.com/view?r=eyJrIjoiYWE5ZjFiMjUtODIwMi00NDQyLWE4OWEtZWYwMDliNTM5N2VmIiwidCI6ImNlZjk5OTUzLWM0OTYtNGE4MS1iMDYxLTNlYmU1ODRjY2ZjYyIsImMiOjh9&pageName=4a862aa3c48ce0d5dca8)
 
 ---
 
@@ -141,17 +143,13 @@ Six source datasets are used.
 | United Fleet Reference | Mainline fleet counts and seating configurations |
 | Aircraft Range Reference | Manufacturer/public reference range |
 
-Further source information is documented in:
+Further source information is available here:
 
-```text
-data/raw/README.md
-```
+### [View the Raw Data Guide](data/raw/README.md)
 
-A detailed description of the warehouse tables, views and their grains is available in:
+A detailed description of the warehouse tables, views and their grains is available here:
 
-```text
-docs/data_dictionary.md
-```
+### [View the Data Dictionary](docs/data_dictionary.md)
 
 ---
 
@@ -226,11 +224,7 @@ Responsibilities include:
 
 Data is loaded using SQL Server `BULK INSERT`.
 
-Detailed documentation:
-
-```text
-scripts/bronze/README.md
-```
+### [View Bronze Layer Documentation](scripts/bronze/README.md)
 
 ---
 
@@ -262,11 +256,7 @@ Key transformations include:
 - Preparing aircraft range information
 - Preparing quarterly operating economics
 
-Detailed documentation:
-
-```text
-scripts/silver/README.md
-```
+### [View Silver Layer Documentation](scripts/silver/README.md)
 
 ---
 
@@ -304,11 +294,7 @@ Fuel / Cost Comparison
 Power BI
 ```
 
-Detailed documentation:
-
-```text
-scripts/gold/README.md
-```
+### [View Gold Layer Documentation](scripts/gold/README.md)
 
 ---
 
@@ -701,9 +687,7 @@ The final page compares the aircraft themselves.
 - Average Fuel Use per Air Hour
 - Average Operating Cost per Air Hour
 
-### Visuals
-
-#### Fleet Capacity vs Operating Cost
+### Fleet Capacity vs Operating Cost
 
 Compares:
 
@@ -724,15 +708,15 @@ Interactive tooltips provide:
 - Operating cost
 - Reference range
 
-#### Fuel Use by Aircraft Type
+### Fuel Use by Aircraft Type
 
 Compares aircraft fuel intensity.
 
-#### Range by Aircraft Type
+### Range by Aircraft Type
 
 Compares manufacturer/public reference range.
 
-#### Aircraft Fleet Summary
+### Aircraft Fleet Summary
 
 Provides exact values for:
 
@@ -754,7 +738,7 @@ You will need:
 - SQL Server
 - SQL Server Management Studio
 - Power BI Desktop
-- Source CSV files documented in `data/raw/README.md`
+- Source CSV files documented in the [Raw Data Guide](data/raw/README.md)
 
 ---
 
@@ -774,11 +758,9 @@ Place the required CSV files inside:
 data/raw/
 ```
 
-Expected filenames are documented in:
+See:
 
-```text
-data/raw/README.md
-```
+### [Raw Data Guide](data/raw/README.md)
 
 The `BULK INSERT` file paths may need to be updated for your own machine.
 
@@ -788,9 +770,7 @@ The `BULK INSERT` file paths may need to be updated for your own machine.
 
 Run:
 
-```text
-scripts/01_init_database.sql
-```
+### [01_init_database.sql](scripts/01_init_database.sql)
 
 This creates:
 
@@ -814,11 +794,9 @@ schemas.
 
 Run in order:
 
-```text
-scripts/bronze/02_ddl_bronze.sql
-scripts/bronze/03_proc_load_bronze.sql
-scripts/bronze/04_bronze_quality_checks.sql
-```
+1. [02_ddl_bronze.sql](scripts/bronze/02_ddl_bronze.sql)
+2. [03_proc_load_bronze.sql](scripts/bronze/03_proc_load_bronze.sql)
+3. [04_bronze_quality_checks.sql](scripts/bronze/04_bronze_quality_checks.sql)
 
 ---
 
@@ -826,11 +804,9 @@ scripts/bronze/04_bronze_quality_checks.sql
 
 Run:
 
-```text
-scripts/silver/05_ddl_silver.sql
-scripts/silver/06_proc_load_silver.sql
-scripts/silver/07_silver_quality_checks.sql
-```
+1. [05_ddl_silver.sql](scripts/silver/05_ddl_silver.sql)
+2. [06_proc_load_silver.sql](scripts/silver/06_proc_load_silver.sql)
+3. [07_silver_quality_checks.sql](scripts/silver/07_silver_quality_checks.sql)
 
 ---
 
@@ -838,11 +814,9 @@ scripts/silver/07_silver_quality_checks.sql
 
 Run:
 
-```text
-scripts/gold/08_gold_model.sql
-scripts/gold/09_gold_quality_checks.sql
-scripts/gold/10_route_suitability_analysis.sql
-```
+1. [08_gold_model.sql](scripts/gold/08_gold_model.sql)
+2. [09_gold_quality_checks.sql](scripts/gold/09_gold_quality_checks.sql)
+3. [10_route_suitability_analysis.sql](scripts/gold/10_route_suitability_analysis.sql)
 
 ---
 
@@ -1113,37 +1087,13 @@ It should not be interpreted as a definitive scheduling instruction.
 
 # Project Documentation
 
-More detailed documentation is available here:
+For deeper technical detail:
 
-### Raw Data
-
-```text
-data/raw/README.md
-```
-
-### Data Dictionary
-
-```text
-docs/data_dictionary.md
-```
-
-### Bronze Layer
-
-```text
-scripts/bronze/README.md
-```
-
-### Silver Layer
-
-```text
-scripts/silver/README.md
-```
-
-### Gold Layer
-
-```text
-scripts/gold/README.md
-```
+- [Raw Data Guide](data/raw/README.md)
+- [Data Dictionary](docs/data_dictionary.md)
+- [Bronze Layer Documentation](scripts/bronze/README.md)
+- [Silver Layer Documentation](scripts/silver/README.md)
+- [Gold Layer Documentation](scripts/gold/README.md)
 
 ---
 
@@ -1164,7 +1114,7 @@ scripts/gold/README.md
 | Route Aircraft Comparison | ✅ Complete |
 | Fleet Comparison | ✅ Complete |
 | Interactive Power BI Report | ✅ Published |
-| GitHub Documentation | 🚧 Finalising |
+| GitHub Documentation | ✅ Complete |
 
 ---
 
