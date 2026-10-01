@@ -1,38 +1,118 @@
 # Raw Data
 
-This folder documents the source datasets used in the **Airline Fleet Deployment Analysis** project.
+This folder contains the source datasets used in the **Airline Fleet Deployment Analysis** project.
 
-The project combines U.S. airline operational data, aircraft reference data, airport information, United Airlines fleet information and aircraft operating-economics data.
-
-The analytical scope is:
+The project analyses:
 
 - **Airline:** United Airlines
 - **Year:** 2025
 - **Geography:** U.S. domestic nonstop routes
-- **Fleet:** United mainline fleet
 - **Demand frequency:** Monthly
 - **Economics frequency:** Quarterly
+- **Fleet:** United mainline aircraft
+
+The raw datasets feed the Bronze layer of the SQL Server Medallion Architecture.
+
+```text
+Raw CSV Files
+      ↓
+   Bronze
+      ↓
+   Silver
+      ↓
+    Gold
+      ↓
+  Power BI
+```
 
 ---
 
-## Required Source Files
+# Source Datasets
 
 The project uses six source datasets.
 
 | File | Source | Purpose |
 |---|---|---|
-| `T_T100_SEGMENT_ALL_CARRIER.csv` | U.S. Bureau of Transportation Statistics (BTS) | Passenger demand, seats, departures, aircraft type, route distance and airborne time |
-| `T_AIRCRAFT_TYPES.csv` | U.S. Bureau of Transportation Statistics (BTS) | Reference table for BTS aircraft type codes |
-| `T_F41SCHEDULE_P52.csv` | U.S. Bureau of Transportation Statistics (BTS) | Quarterly aircraft fuel, maintenance and operating-cost information |
-| `airports.csv` | OurAirports | Airport names, country information and geographic coordinates |
-| `united_fleet_2025_raw.csv` | Project reference dataset compiled from public fleet information | United mainline aircraft types, fleet counts and seating configurations |
-| `aircraft_range_raw.csv` | Project reference dataset compiled from manufacturer/public aircraft information | Reference aircraft range by fleet type |
+| `T_T100_SEGMENT_ALL_CARRIER.csv` | U.S. Bureau of Transportation Statistics | Passenger demand, seats, departures, aircraft type, route distance and airborne time |
+| `T_AIRCRAFT_TYPES.csv` | U.S. Bureau of Transportation Statistics | BTS aircraft type reference |
+| `T_F41SCHEDULE_P52.csv` | U.S. Bureau of Transportation Statistics | Quarterly aircraft fuel, maintenance and operating economics |
+| `airports.csv` | OurAirports | Airport names, countries and geographic coordinates |
+| `united_fleet_2025_raw.csv` | Project reference dataset | United mainline fleet counts and seating configurations |
+| `aircraft_range_raw.csv` | Project reference dataset | Aircraft reference range |
 
 ---
 
-# Expected Local Folder Structure
+# Dataset Availability
 
-To reproduce the project, place the source files in:
+Five of the six datasets are included directly in this repository:
+
+```text
+T_AIRCRAFT_TYPES.csv
+T_F41SCHEDULE_P52.csv
+airports.csv
+united_fleet_2025_raw.csv
+aircraft_range_raw.csv
+```
+
+The only dataset not stored directly in GitHub is:
+
+```text
+T_T100_SEGMENT_ALL_CARRIER.csv
+```
+
+This file is approximately 100 MB and is therefore downloaded separately from the U.S. Bureau of Transportation Statistics.
+
+---
+
+# Downloading the T-100 Dataset
+
+The main operational source used by the project is:
+
+**BTS T-100 Segment (All Carriers)**
+
+Official BTS download page:
+
+https://www.transtats.bts.gov/DL_SelectFields.asp?QO_fu146_anzr=Nv4+Pn44vr45&gnoyr_VQ=FMG
+
+The dataset provides monthly nonstop segment information including:
+
+- Scheduled departures
+- Performed departures
+- Seats
+- Passengers
+- Freight
+- Mail
+- Distance
+- Ramp-to-ramp time
+- Air time
+- Carrier information
+- Origin airport
+- Destination airport
+- Aircraft type
+- Year
+- Quarter
+- Month
+- Service class
+
+## Download Steps
+
+1. Open the BTS T-100 Segment download page.
+2. Select **2025**.
+3. Select/download the fields required by the project.
+4. Extract the CSV if the download is supplied as a ZIP file.
+5. Rename the file:
+
+```text
+T_T100_SEGMENT_ALL_CARRIER.csv
+```
+
+6. Place the file inside:
+
+```text
+data/raw/
+```
+
+The final local folder should contain:
 
 ```text
 data/
@@ -45,70 +125,62 @@ data/
     └── aircraft_range_raw.csv
 ```
 
-The SQL `BULK INSERT` paths may need to be changed depending on where the repository is stored on your machine.
+The large T-100 file is deliberately excluded from Git tracking using `.gitignore`.
 
 ---
 
-# 1. BTS T-100 Segment Data
+# 1. BTS T-100 Segment
 
-**File**
+## File
 
 ```text
 T_T100_SEGMENT_ALL_CARRIER.csv
 ```
 
-**Source**
+## Purpose
 
-U.S. Bureau of Transportation Statistics — T-100 Segment data.
+This is the main operational dataset.
 
-**Purpose**
+It is used to analyse:
 
-This is the main operational dataset used to measure passenger demand and route activity.
-
-The project uses fields including:
-
-- Scheduled departures
-- Performed departures
-- Seats
-- Passengers
-- Route distance
-- Air time
-- Carrier information
-- Origin airport
-- Destination airport
+- Passenger demand
+- Seats supplied
+- Flights operated
 - Aircraft type
-- Year
-- Quarter
-- Month
-- Service class
+- Route distance
+- Airborne time
+- Monthly seasonality
 
-The data is filtered in the Silver layer to:
+The Silver layer filters the data to:
 
 ```text
 United Airlines
 2025
 ```
 
-The Gold analytical layer later restricts the analysis to U.S. domestic routes.
+The Gold layer later restricts the analysis to U.S. domestic routes.
 
 ---
 
-## Important T-100 Grain Note
+## Important Grain Note
 
-The raw T-100 dataset can contain multiple rows that appear to describe the same:
+The raw T-100 dataset can contain multiple rows for the same:
 
 ```text
-Month
+Year
++ Month
 + Origin
 + Destination
 + Aircraft Type
 ```
 
-These rows are not automatically treated as duplicates.
+These rows are not automatically duplicates.
 
-They can represent separate groups of operational activity and therefore need to be aggregated before route-level analysis.
+They can represent separate groups of operational activity.
 
-For this reason:
+The Silver layer therefore aggregates them to a consistent monthly analytical grain.
+
+Measures such as:
 
 ```text
 Passengers
@@ -117,61 +189,48 @@ Departures
 Air Time
 ```
 
-are treated as additive measures.
+are additive and use `SUM()`.
 
-Route distance is not additive.
-
-The Silver layer therefore creates a consistent monthly route-aircraft analytical grain.
+Route distance is not additive and is not summed across repeated rows.
 
 ---
 
 # 2. BTS Aircraft Types
 
-**File**
+## File
 
 ```text
 T_AIRCRAFT_TYPES.csv
 ```
 
-**Source**
+## Purpose
 
-U.S. Bureau of Transportation Statistics.
+Provides the reference description for BTS aircraft type codes.
 
-**Purpose**
+It is used to help interpret aircraft identifiers appearing in:
 
-Provides descriptions for BTS aircraft type identifiers used in operational and economics datasets.
-
-The table is used to help interpret aircraft codes appearing in:
-
-```text
-T-100 Segment
-Form 41 Schedule P-5.2
-```
+- T-100 operational data
+- Form 41 economics data
 
 ---
 
 # 3. BTS Form 41 Schedule P-5.2
 
-**File**
+## File
 
 ```text
 T_F41SCHEDULE_P52.csv
 ```
 
-**Source**
-
-U.S. Bureau of Transportation Statistics — Form 41 Schedule P-5.2.
-
-**Purpose**
+## Purpose
 
 Provides quarterly aircraft-type operating economics.
 
-The project uses information including:
+The project uses fields covering:
 
 - Fuel expense
 - Flying operations expense
-- Direct maintenance expense
-- Flight maintenance expense
+- Maintenance expense
 - Total air operating expense
 - Total air hours
 - Aircraft days assigned
@@ -182,38 +241,29 @@ The project uses information including:
 - Year
 - Quarter
 
-The Silver layer filters the source to:
+The Silver layer filters the data to:
 
 ```text
-Carrier = United Airlines
-Year = 2025
-Region = Domestic
+United Airlines
+2025
+Domestic region
 ```
 
-and excludes generic aircraft code:
+Generic BTS aircraft type:
 
 ```text
 999
 ```
 
+is excluded.
+
 ---
 
 ## BTS `(000)` Units
 
-Several P-5.2 fields are reported in thousands.
+Several P-5.2 fields are supplied in thousands.
 
-For example:
-
-```text
-Fuel expense (000)
-Operating expense (000)
-Air hours (000)
-Fuel issued (000)
-```
-
-The Silver layer converts these totals into normal units before storing the cleaned analytical data.
-
-Derived metrics include:
+The Silver layer converts the required totals into normal units before calculating:
 
 ```text
 Fuel Gallons per Air Hour
@@ -222,40 +272,23 @@ Operating Cost per Air Hour
 Maintenance Cost per Air Hour
 ```
 
----
+These economics values are aircraft-type/quarter comparison measures.
 
-## Economics Interpretation
-
-The economics data represents:
-
-```text
-Carrier
-+ Aircraft Type
-+ Quarter
-+ Region
-```
-
-It does **not** represent the exact operating cost of an individual flight or route.
-
-The project therefore uses these values as aircraft comparison metrics rather than exact route-accounting costs.
+They are not exact route-level accounting costs.
 
 ---
 
-# 4. OurAirports Data
+# 4. OurAirports
 
-**File**
+## File
 
 ```text
 airports.csv
 ```
 
-**Source**
+## Purpose
 
-OurAirports.
-
-**Purpose**
-
-Used to enrich operational airport codes with:
+Used to enrich airport codes with:
 
 - Airport name
 - Country
@@ -268,33 +301,19 @@ This supports:
 - Airport display names
 - Geographic route mapping in Power BI
 
----
-
-## Airport Code Reconciliation
-
-Source datasets do not always use airport identifiers consistently.
-
-For example, the project identified a mismatch involving:
-
-```text
-PBI
-```
-
-The Bronze layer preserves the source value.
-
-The Silver layer creates a separate analysis airport code where required so that operational data can be matched correctly without overwriting the original source value.
+The Silver layer also performs airport-code reconciliation where required while preserving the original source value.
 
 ---
 
 # 5. United Fleet Reference
 
-**File**
+## File
 
 ```text
 united_fleet_2025_raw.csv
 ```
 
-**Purpose**
+## Purpose
 
 Provides the United mainline fleet used for candidate aircraft comparison.
 
@@ -305,37 +324,35 @@ Information includes:
 - Minimum seating capacity
 - Maximum seating capacity
 
-The project contains:
+The project reference contains:
 
 ```text
-19 United mainline aircraft types
+19 aircraft types
 ```
 
-representing approximately:
+and approximately:
 
 ```text
 1,066 aircraft
 ```
 
-in the fleet reference used for the project.
+This is a project reference dataset compiled from publicly available fleet information.
 
-This dataset was compiled as a project reference dataset using publicly available fleet information.
-
-It should not be interpreted as an official United Airlines internal fleet-planning dataset.
+It should not be interpreted as an official internal United Airlines fleet-planning dataset.
 
 ---
 
 # 6. Aircraft Range Reference
 
-**File**
+## File
 
 ```text
 aircraft_range_raw.csv
 ```
 
-**Purpose**
+## Purpose
 
-Provides manufacturer/public reference range information for each United fleet type.
+Provides reference range information for United fleet aircraft.
 
 The project contains range information for:
 
@@ -343,19 +360,21 @@ The project contains range information for:
 19 aircraft types
 ```
 
-Range values are stored in nautical miles and converted where required for comparison with T-100 route distance.
+Range is supplied in nautical miles.
 
-The Gold layer uses:
+Where required, Gold converts range using:
 
 ```text
 1 nautical mile ≈ 1.15078 statute miles
 ```
 
+for comparison with T-100 route distance.
+
 ---
 
-## Range Interpretation
+## Range Limitation
 
-Aircraft reference range is used only as a high-level route feasibility check.
+Aircraft range is used only as a high-level feasibility check.
 
 It does not account for:
 
@@ -363,50 +382,50 @@ It does not account for:
 - Weather
 - Winds
 - Reserve fuel
-- Airport altitude
+- Airport elevation
 - Runway performance
-- Airline-specific operating restrictions
-- Route-specific aircraft configuration
+- Airline operating restrictions
+- Aircraft-specific configuration
 
-It should therefore not be interpreted as an exact operational range calculation.
+It should not be interpreted as an exact operational range calculation.
 
 ---
 
 # Aircraft Mapping
 
-Aircraft identifiers differ between the source datasets.
+Aircraft names and identifiers differ between datasets.
 
 For example:
 
 ```text
 United Fleet Name
+        ↓
+Aircraft Mapping
+        ↓
 BTS Aircraft Type ID
-BTS Aircraft Description
 ```
 
-may all identify the same aircraft differently.
-
-The Silver layer therefore creates:
+The Silver layer creates:
 
 ```text
 silver.aircraft_mapping
 ```
 
-to explicitly connect aircraft across sources.
+to explicitly connect these different source systems.
 
-This is safer than attempting to join datasets using aircraft-name text alone.
+This is safer than relying on aircraft-name text alone.
 
 ---
 
 # Boeing 777-200 Family Limitation
 
-One important source limitation involves BTS aircraft type:
+BTS aircraft code:
 
 ```text
 627
 ```
 
-which represents a broader Boeing 777-200 family classification.
+represents the wider Boeing 777-200 family.
 
 The United fleet reference separately identifies:
 
@@ -415,45 +434,19 @@ The United fleet reference separately identifies:
 777-200ER
 ```
 
-The BTS source does not provide sufficient detail to confidently determine which United subtype the economics belong to.
+The public BTS data does not provide enough information to confidently assign the family-level economics to either exact subtype.
 
-The project therefore does **not** force an exact economics mapping for these two variants.
+The project therefore does not force an exact economics mapping for these aircraft.
 
-This prevents false precision being introduced into the analysis.
-
----
-
-# Why Raw CSV Files May Not Be Stored in the Main Repository
-
-Some source datasets are relatively large.
-
-For example, the T-100 Segment file used in the project is approximately:
-
-```text
-100 MB
-```
-
-Large raw files are therefore excluded from the normal Git repository using `.gitignore`.
-
-This keeps the repository lightweight and avoids unnecessary duplication of publicly available source data.
-
-The repository instead documents:
-
-- Required filenames
-- Source purpose
-- Expected folder structure
-- Transformation logic
-- SQL scripts used to process the data
-
-A separate reproducibility data snapshot may also be provided through a GitHub Release in the future.
+This avoids introducing false precision into the analysis.
 
 ---
 
-# Reproducing the Analysis
+# Reproducing the Project
 
-Once the six files are available locally:
+Once all six files are available locally:
 
-### 1. Initialise the database
+## 1. Initialise the Database
 
 Run:
 
@@ -461,7 +454,9 @@ Run:
 scripts/01_init_database.sql
 ```
 
-### 2. Build and load Bronze
+---
+
+## 2. Build Bronze
 
 Run:
 
@@ -471,7 +466,9 @@ scripts/bronze/03_proc_load_bronze.sql
 scripts/bronze/04_bronze_quality_checks.sql
 ```
 
-### 3. Build Silver
+---
+
+## 3. Build Silver
 
 Run:
 
@@ -481,7 +478,9 @@ scripts/silver/06_proc_load_silver.sql
 scripts/silver/07_silver_quality_checks.sql
 ```
 
-### 4. Build Gold
+---
+
+## 4. Build Gold
 
 Run:
 
@@ -491,15 +490,27 @@ scripts/gold/09_gold_quality_checks.sql
 scripts/gold/10_route_suitability_analysis.sql
 ```
 
-More detailed explanations of the transformations are available in the README contained within each Medallion layer.
+The `BULK INSERT` file paths may need to be changed to match the location of the repository on your own machine.
+
+---
+
+# Further Documentation
+
+For additional information see:
+
+- [Main Project README](../../README.md)
+- [Data Dictionary](../../docs/data_dictionary.md)
+- [Bronze Documentation](../../scripts/bronze/README.md)
+- [Silver Documentation](../../scripts/silver/README.md)
+- [Gold Documentation](../../scripts/gold/README.md)
 
 ---
 
 # Data Usage Note
 
-This project is an independent educational and portfolio project.
+This is an independent educational and portfolio project.
 
-Public/reference source data is used to demonstrate:
+The datasets are used to demonstrate:
 
 - SQL
 - Data engineering
@@ -510,4 +521,4 @@ Public/reference source data is used to demonstrate:
 
 The project is not affiliated with or endorsed by United Airlines, the U.S. Bureau of Transportation Statistics or OurAirports.
 
-Users reproducing the project should also review the terms and usage guidance provided by the original source providers.
+Users reproducing the project should review the usage guidance provided by the original source providers.
